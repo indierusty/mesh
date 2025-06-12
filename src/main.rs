@@ -1,22 +1,19 @@
-pub type Id = usize;
+use macroquad::prelude::*;
+use mesh::{HEIGHT, WIDTH};
 
-pub enum Handle {
-    Linear,
-    Quadratic(Vec2),
-    Cubic(Vec2, Vec2),
+fn conf() -> Conf {
+    Conf {
+        window_title: "Mesh".to_string(),
+        window_width: WIDTH,
+        window_height: HEIGHT,
+        ..Default::default()
+    }
 }
 
-pub struct Vec2(f64, f64);
-
-pub enum MeshElement {
-    Point(Id, Vec2),
-    Segment(Id, Id, Handle, Id),
-}
-
-pub struct Mesh {
-    elements: Vec<MeshElement>,
-}
-
-fn main() {
-    println!("Hello, world!");
+#[macroquad::main(conf)]
+async fn main() {
+    loop {
+        clear_background(WHITE);
+        next_frame().await
+    }
 }

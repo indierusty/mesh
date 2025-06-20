@@ -1,8 +1,10 @@
-use kurbo::Point;
+use std::collections::HashMap;
+
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 
 use crate::next_id::NextId;
 
-pub struct Mesh {
+pub struct MMesh {
     points: Vec<MPoint>,
     segments: Vec<MSegment>,
     next_id: NextId,
@@ -36,10 +38,10 @@ impl MSegment {
 pub enum MCurve {
     Linear,
     Quad(Point),
-    Cubic(Point),
+    Cubic(Point, Point),
 }
 
-impl Mesh {
+impl MMesh {
     pub fn empty() -> Self {
         Self {
             points: Vec::new(),
@@ -96,5 +98,136 @@ impl Mesh {
         {
             segment.curve = new_segment.curve;
         }
+    }
+
+    pub fn append_bezpath(&mut self, bezpath: &BezPath) {
+        let mut last_point = None;
+
+        for element in bezpath.elements() {
+            match element {
+                kurbo::PathEl::MoveTo(point) => {
+                    let id = self.next_id.next();
+                    let new_point = MPoint::new(id, *point);
+                    self.points.push(new_point);
+                    last_point = Some(new_point);
+                }
+                kurbo::PathEl::LineTo(point) => {
+                    let id = self.next_id.next();
+                    let new_point = MPoint::new(id, *point);
+                    self.points.push(new_point);
+
+                    let prev_point = last_point.unwrap();
+                    let curve = MCurve::Linear;
+                    let segment = MSegment::new((prev_point.id, new_point.id), curve);
+                    self.segments.push(segment);
+
+                    last_point = Some(new_point);
+                }
+                kurbo::PathEl::QuadTo(point, point1) => {
+                    let id = self.next_id.next();
+                    let new_point = MPoint::new(id, *point1);
+                    self.points.push(new_point);
+
+                    let prev_point = last_point.unwrap();
+                    let curve = MCurve::Quad(*point);
+                    let segment = MSegment::new((prev_point.id, new_point.id), curve);
+                    self.segments.push(segment);
+
+                    last_point = Some(new_point);
+                }
+                kurbo::PathEl::CurveTo(point, point1, point2) => {
+                    let id = self.next_id.next();
+                    let new_point = MPoint::new(id, *point2);
+                    self.points.push(new_point);
+
+                    let prev_point = last_point.unwrap();
+                    let curve = MCurve::Cubic(*point, *point1);
+                    let segment = MSegment::new((prev_point.id, new_point.id), curve);
+                    self.segments.push(segment);
+
+                    last_point = Some(new_point);
+                }
+                kurbo::PathEl::ClosePath => {
+                    last_point = None;
+                    // TODO: Append multiple paths and close the path.
+                }
+            };
+        }
+    }
+
+    pub fn to_bezpath(&self) -> BezPath {
+        let mut bezpath = BezPath::new();
+        if self.segments.is_empty() {
+            return bezpath;
+        }
+        let mut segments_from_start = HashMap::new();
+        let mut segments_from_end = HashMap::new();
+
+        for segment in &self.segments {
+            segments_from_start.insert(segment.id.0, segment);
+            segments_from_end.insert(segment.id.1, segment);
+        }
+
+        let mut prev_point_id = self.segments.first().unwrap().id.0;
+        let first_point_id = prev_point_id;
+
+        while segments_from_end.contains_key(&prev_point_id) {
+            prev_point_id = segments_from_end.get(&prev_point_id).unwrap().id.0;
+
+            if prev_point_id == first_point_id {
+                break;
+            }
+        }
+
+        let mut next_point_id = prev_point_id;
+
+        let points = self
+            .points
+            .iter()
+            .fold(HashMap::new(), |mut points, point| {
+                points.insert(point.id, *point);
+                points
+            });
+
+        while let Some(segment) = segments_from_start.get(&next_point_id) {
+            next_point_id = segment.id.1;
+
+            let start_point = points.get(&segment.id.0).unwrap().position;
+            let endpoint = points.get(&segment.id.1).unwrap().position;
+
+            let path_segment = match segment.curve {
+                MCurve::Linear => PathSeg::Line(Line::new(start_point, endpoint)),
+                MCurve::Quad(point) => PathSeg::Quad(QuadBez::new(start_point, point, endpoint)),
+                MCurve::Cubic(point, point1) => {
+                    PathSeg::Cubic(CubicBez::new(start_point, point, point1, endpoint))
+                }
+            };
+
+            if bezpath.elements().is_empty() {
+                bezpath.move_to(path_segment.start());
+            }
+            bezpath.push(path_segment.as_path_el());
+        }
+
+        bezpath
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bezpath_works() {
+        let mut bezpath = BezPath::new();
+
+        bezpath.move_to(Point::new(10., 15.));
+        bezpath.quad_to(Point::new(100., 120.), Point::new(100., 200.));
+        bezpath.quad_to(Point::new(200., 220.), Point::new(200., 300.));
+
+        let mut mesh = MMesh::empty();
+        mesh.append_bezpath(&bezpath);
+        let result = mesh.to_bezpath();
+        assert_eq!(result, bezpath);
     }
 }

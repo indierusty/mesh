@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use kurbo::{BezPath, Point};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
+use macroquad::{color::BLACK, shapes::draw_line};
 
 use crate::next_id::NextId;
 
@@ -10,9 +11,27 @@ pub struct MMesh {
     next_id: NextId,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PointId(usize);
+
+impl PointId {
+    pub fn id(&self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PointIndex(usize);
+
+impl PointIndex {
+    pub fn index(&self) -> usize {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PointTable {
-    id: Vec<usize>,
+    id: Vec<PointId>,
     position: Vec<Point>,
 }
 
@@ -24,19 +43,37 @@ impl PointTable {
         }
     }
 
-    pub fn push(&mut self, id: usize, position: Point) {
+    pub fn push(&mut self, id: PointId, position: Point) {
         self.id.push(id);
         self.position.push(position);
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SegmentId(usize);
+
+impl SegmentId {
+    pub fn id(&self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SegmentIndex(usize);
+
+impl SegmentIndex {
+    pub fn index(&self) -> usize {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SegmentTable {
-    id: Vec<usize>,
-    p1: Vec<usize>,
-    p2: Vec<Option<usize>>,
-    p3: Vec<Option<usize>>,
-    p4: Vec<usize>,
+    id: Vec<SegmentId>,
+    p1: Vec<PointId>,
+    p2: Vec<Option<PointId>>,
+    p3: Vec<Option<PointId>>,
+    p4: Vec<PointId>,
 }
 
 impl SegmentTable {
@@ -50,7 +87,14 @@ impl SegmentTable {
         }
     }
 
-    pub fn push(&mut self, id: usize, p1: usize, p2: Option<usize>, p3: Option<usize>, p4: usize) {
+    pub fn push(
+        &mut self,
+        id: SegmentId,
+        p1: PointId,
+        p2: Option<PointId>,
+        p3: Option<PointId>,
+        p4: PointId,
+    ) {
         self.id.push(id);
         self.p1.push(p1);
         self.p2.push(p2);
@@ -68,25 +112,33 @@ impl MMesh {
         }
     }
 
-    pub fn append_point(&mut self, point: Point) -> usize {
-        let id = self.next_id.next();
+    pub fn next_point_id(&mut self) -> PointId {
+        PointId(self.next_id.next())
+    }
+
+    pub fn next_segment_id(&mut self) -> SegmentId {
+        SegmentId(self.next_id.next())
+    }
+
+    pub fn append_point(&mut self, point: Point) -> PointId {
+        let id = self.next_point_id();
         self.points.push(id, point);
         id
     }
 
     pub fn append_segment(
         &mut self,
-        p1: usize,
-        p2: Option<usize>,
-        p3: Option<usize>,
-        p4: usize,
-    ) -> Option<usize> {
+        p1: PointId,
+        p2: Option<PointId>,
+        p3: Option<PointId>,
+        p4: PointId,
+    ) -> Option<SegmentId> {
         let mut points = [Some(p1), p2, p3, Some(p4)];
 
         // If any point is not in the points table then return [`None`].
         for point_id in &self.points.id {
             for points in &mut points {
-                if points.is_some_and(|p| p == *point_id) {
+                if points.is_some_and(|p| p.id() == point_id.id()) {
                     *points = None;
                 }
             }
@@ -95,12 +147,12 @@ impl MMesh {
             return None;
         }
 
-        let id = self.next_id.next();
+        let id = self.next_segment_id();
         self.segments.push(id, p1, p2, p3, p4);
         Some(id)
     }
 
-    pub fn closest_point(&self, position: Point) -> Option<(usize, Point)> {
+    pub fn closest_point(&self, position: Point) -> Option<(PointId, Point)> {
         self.points.id.iter().zip(self.points.position.iter()).fold(
             None,
             |mut closest_point, (id, point)| {
@@ -116,32 +168,41 @@ impl MMesh {
         )
     }
 
-    pub fn set_point(&mut self, point_id: usize, point_position: Point) {
+    pub fn set_point(&mut self, point_id: PointId, point_position: Point) {
         if let Some((_, point)) = self
             .points
             .id
             .iter()
             .zip(self.points.position.iter_mut())
-            .find(|(id, _)| **id == point_id)
+            .find(|(id, _)| id.id() == point_id.id())
         {
             *point = point_position;
         }
     }
 
+    pub fn get_point(&self, point_id: PointId) -> Option<Point> {
+        self.points
+            .id
+            .iter()
+            .enumerate()
+            .find(|(_, id)| id.id() == point_id.id())
+            .and_then(|(index, _)| self.points.position.get(index).copied())
+    }
+
     pub fn set_segment(
         &mut self,
-        id: usize,
-        p1: usize,
-        p2: Option<usize>,
-        p3: Option<usize>,
-        p4: usize,
+        id: SegmentId,
+        p1: PointId,
+        p2: Option<PointId>,
+        p3: Option<PointId>,
+        p4: PointId,
     ) {
         if let Some((index, _)) = self
             .segments
             .id
             .iter()
             .enumerate()
-            .find(|(_, this)| **this == id)
+            .find(|(_, this)| this.id() == id.id())
         {
             self.segments.p1[index] = p1;
             self.segments.p2[index] = p2;
@@ -156,44 +217,44 @@ impl MMesh {
         for element in bezpath.elements() {
             match element {
                 kurbo::PathEl::MoveTo(point) => {
-                    let id = self.next_id.next();
+                    let id = self.next_point_id();
                     self.points.push(id, *point);
                     last_point_id = Some(id);
                 }
                 kurbo::PathEl::LineTo(p4) => {
-                    let p4_id = self.next_id.next();
+                    let p4_id = self.next_point_id();
                     self.points.push(p4_id, *p4);
 
-                    let segment_id = self.next_id.next();
+                    let segment_id = self.next_segment_id();
                     let p1 = last_point_id.unwrap();
                     self.segments.push(segment_id, p1, None, None, p4_id);
 
                     last_point_id = Some(p4_id);
                 }
                 kurbo::PathEl::QuadTo(p3, p4) => {
-                    let p3_id = self.next_id.next();
+                    let p3_id = self.next_point_id();
                     self.points.push(p3_id, *p3);
 
-                    let p4_id = self.next_id.next();
+                    let p4_id = self.next_point_id();
                     self.points.push(p4_id, *p4);
 
-                    let segment_id = self.next_id.next();
+                    let segment_id = self.next_segment_id();
                     let p1 = last_point_id.unwrap();
                     self.segments.push(segment_id, p1, None, Some(p3_id), p4_id);
 
                     last_point_id = Some(p4_id);
                 }
                 kurbo::PathEl::CurveTo(p2, p3, p4) => {
-                    let p2_id = self.next_id.next();
+                    let p2_id = self.next_point_id();
                     self.points.push(p2_id, *p2);
 
-                    let p3_id = self.next_id.next();
+                    let p3_id = self.next_point_id();
                     self.points.push(p3_id, *p3);
 
-                    let p4_id = self.next_id.next();
+                    let p4_id = self.next_point_id();
                     self.points.push(p4_id, *p4);
 
-                    let segment_id = self.next_id.next();
+                    let segment_id = self.next_segment_id();
                     let p1 = last_point_id.unwrap();
                     self.segments
                         .push(segment_id, p1, Some(p2_id), Some(p3_id), p4_id);
@@ -282,6 +343,55 @@ impl MMesh {
 
         bezpath
     }
+
+    pub fn draw(&self) {
+        let points = self.points.id.iter().zip(self.points.position.iter()).fold(
+            HashMap::new(),
+            |mut acc, (id, pos)| {
+                acc.insert(*id, *pos);
+                acc
+            },
+        );
+
+        for index in 0..self.segments.id.len() {
+            let p1_id = self.segments.p1[index];
+            let p2_id = self.segments.p2[index];
+            let p3_id = self.segments.p3[index];
+            let p4_id = self.segments.p4[index];
+
+            let p1 = points.get(&p1_id).unwrap();
+            let p2 = p2_id.and_then(|id| points.get(&id));
+            let p3 = p3_id.and_then(|id| points.get(&id));
+            let p4 = points.get(&p4_id).unwrap();
+
+            let segment = match (p2, p3) {
+                (Some(p2), Some(p3)) => PathSeg::Cubic(CubicBez::new(*p1, *p2, *p3, *p4)),
+                (Some(p2), None) | (None, Some(p2)) => PathSeg::Quad(QuadBez::new(*p1, *p2, *p4)),
+                (None, None) => PathSeg::Line(Line::new(*p1, *p4)),
+            };
+
+            let mut last_point: Option<Point> = None;
+            let mut t = 0.;
+            loop {
+                if t > 1. {
+                    break;
+                }
+                let next_point = segment.eval(t);
+                if let Some(last_point) = last_point {
+                    draw_line(
+                        last_point.x as f32,
+                        last_point.y as f32,
+                        next_point.x as f32,
+                        next_point.y as f32,
+                        2.,
+                        BLACK,
+                    );
+                }
+                last_point = Some(next_point);
+                t += 1e-3;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -298,6 +408,7 @@ mod tests {
 
         let mut mesh = MMesh::empty();
         mesh.append_bezpath(&bezpath);
+
         let result = mesh.to_bezpath();
         assert_eq!(result, bezpath);
     }

@@ -1,6 +1,6 @@
-use kurbo::{BezPath, DEFAULT_ACCURACY, Point, Shape};
+use kurbo::{BezPath, Point};
 use macroquad::prelude::*;
-use mesh::{HEIGHT, WIDTH, mesh::MMesh};
+use mesh::{HEIGHT, WIDTH, mesh::MMesh, pen::Pen};
 
 fn conf() -> Conf {
     Conf {
@@ -13,8 +13,6 @@ fn conf() -> Conf {
 
 #[macroquad::main(conf)]
 async fn main() {
-    let mut n = 5.;
-
     let mut bezpath = BezPath::new();
 
     bezpath.move_to(Point::new(10., 15.));
@@ -22,7 +20,8 @@ async fn main() {
     bezpath.quad_to(Point::new(200., 220.), Point::new(200., 300.));
 
     let mut mesh = MMesh::empty();
-    mesh.append_bezpath(&bezpath);
+    // mesh.append_bezpath(&bezpath);
+    let mut pen = Pen::new();
     let result = mesh.to_bezpath();
 
     println!("bezpath => {:#?}", bezpath);
@@ -30,7 +29,9 @@ async fn main() {
 
     loop {
         clear_background(WHITE);
-        n += 1.;
+        mesh.draw();
+        pen.update(&mut mesh);
+        pen.draw(&mesh);
         next_frame().await
     }
 }

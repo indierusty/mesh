@@ -1,9 +1,9 @@
-use kurbo::Point;
+use kurbo::{CubicBez, Line, Point, QuadBez};
 use macroquad::prelude::*;
 
 use crate::{
     mesh::{MMesh, PointId},
-    util::{dvec2_to_point, mouse_position_dvec2, mouse_position_point, point_to_dvec2},
+    util::{draw_bez, dvec2_to_point, mouse_position_dvec2, mouse_position_point, point_to_dvec2},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -78,7 +78,7 @@ impl Pen {
                         (None, None) => (None, None),
                     };
                     mesh.append_segment(*p1, p2, p3, *p4);
-                    self.state = State::Idle;
+                    self.state = State::IdleStartPoint(*p4, Some(mouse_position_point()));
                 } else {
                     // Get mouse position
                     let mouse_position = mouse_position_dvec2();
@@ -117,9 +117,7 @@ impl Pen {
                 }
             }
             State::IdleStartPoint(p1, p2) => {
-                let Some(p1) = mesh.get_point(p1) else {
-                    return;
-                };
+                let p1 = mesh.get_point(p1).unwrap();
                 draw_circle(p1.x as f32, p1.y as f32, 3., SKYBLUE);
 
                 if let Some(p2) = p2 {
@@ -132,41 +130,23 @@ impl Pen {
                         1.,
                         SKYBLUE,
                     );
+                    let quad_bez = QuadBez::new(p1, p2, mouse_position_point());
+                    draw_bez(quad_bez);
                 }
             }
             State::DragSecondPoint(p1, p2, p3, p4) => {
-                let Some(p1) = mesh.get_point(p1) else {
-                    return;
-                };
+                let p1 = mesh.get_point(p1).unwrap();
+                let p4 = mesh.get_point(p4).unwrap();
+
                 draw_circle(p1.x as f32, p1.y as f32, 3., SKYBLUE);
-
-                if let Some(p2) = p2 {
-                    draw_circle(p2.x as f32, p2.y as f32, 3., SKYBLUE);
-                    draw_line(
-                        p1.x as f32,
-                        p1.y as f32,
-                        p2.x as f32,
-                        p2.y as f32,
-                        1.,
-                        SKYBLUE,
-                    );
-                }
-
-                let Some(p4) = mesh.get_point(p4) else {
-                    return;
-                };
                 draw_circle(p4.x as f32, p4.y as f32, 3., SKYBLUE);
 
-                if let Some(p3) = p3 {
-                    draw_circle(p3.x as f32, p3.y as f32, 3., SKYBLUE);
-                    draw_line(
-                        p4.x as f32,
-                        p4.y as f32,
-                        p3.x as f32,
-                        p3.y as f32,
-                        1.,
-                        SKYBLUE,
-                    );
+                match (p2, p3) {
+                    (Some(p2), Some(p3)) => draw_bez(CubicBez::new(p1, p2, p3, p4)),
+                    (Some(p2), None) | (None, Some(p2)) => draw_bez(QuadBez::new(p1, p2, p4)),
+                    (None, None) => {
+                        draw_bez(Line::new(p1, p4));
+                    }
                 }
             }
         }

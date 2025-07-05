@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
-use macroquad::{color::BLACK, shapes::draw_line};
+use macroquad::{
+    color::{BLACK, GRAY},
+    shapes::{draw_circle, draw_line},
+};
 
 use crate::next_id::NextId;
 
@@ -189,6 +192,34 @@ impl MMesh {
             .and_then(|(index, _)| self.points.position.get(index).copied())
     }
 
+    pub fn remove_floating_point(&mut self, point_id: PointId) {
+        let mut is_floating_point = true;
+        for segment_index in 0..self.segments.id.len() {
+            if self.segments.p1[segment_index] == point_id
+                || self.segments.p2[segment_index] == Some(point_id)
+                || self.segments.p3[segment_index] == Some(point_id)
+                || self.segments.p4[segment_index] == point_id
+            {
+                is_floating_point = false;
+            }
+        }
+
+        if is_floating_point {
+            let index = self
+                .points
+                .id
+                .iter()
+                .enumerate()
+                .find(|(_, id)| **id == point_id)
+                .map(|(index, _)| index);
+
+            if let Some(index) = index {
+                self.points.id.remove(index);
+                self.points.position.remove(index);
+            }
+        }
+    }
+
     pub fn set_segment(
         &mut self,
         id: SegmentId,
@@ -345,6 +376,9 @@ impl MMesh {
     }
 
     pub fn draw(&self) {
+        for point in &self.points.position {
+            draw_circle(point.x as f32, point.y as f32, 2., GRAY);
+        }
         let points = self.points.id.iter().zip(self.points.position.iter()).fold(
             HashMap::new(),
             |mut acc, (id, pos)| {

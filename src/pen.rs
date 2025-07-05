@@ -37,7 +37,10 @@ impl Pen {
                 }
             }
             State::DragStartPoint(p1, p2) => {
-                if is_mouse_button_released(MouseButton::Left) {
+                if is_key_pressed(KeyCode::Escape) {
+                    mesh.remove_floating_point(*p1);
+                    self.state = State::Idle;
+                } else if is_mouse_button_released(MouseButton::Left) {
                     self.state = State::IdleStartPoint(*p1, *p2);
                 } else {
                     // Get mouse position
@@ -57,7 +60,10 @@ impl Pen {
                 let (x, y) = mouse_position();
                 let mouse_position = Point::new(x as f64, y as f64);
 
-                if is_mouse_button_pressed(MouseButton::Left) {
+                if is_key_pressed(KeyCode::Escape) {
+                    mesh.remove_floating_point(*p1);
+                    self.state = State::Idle;
+                } else if is_mouse_button_pressed(MouseButton::Left) {
                     if mesh.get_point(*p1).unwrap().distance(mouse_position) < 5. {
                         self.state = State::DragStartPoint(*p1, Some(mouse_position));
                     } else {
@@ -69,7 +75,11 @@ impl Pen {
                 }
             }
             State::DragSecondPoint(p1, p2, p3, p4) => {
-                if is_mouse_button_released(MouseButton::Left) {
+                if is_key_pressed(KeyCode::Escape) {
+                    mesh.remove_floating_point(*p1);
+                    mesh.remove_floating_point(*p4);
+                    self.state = State::Idle;
+                } else if is_mouse_button_released(MouseButton::Left) {
                     let (p2, p3) = match (p2, p3) {
                         (Some(p2), Some(p3)) => {
                             (Some(mesh.append_point(*p2)), Some(mesh.append_point(*p3)))
@@ -120,19 +130,19 @@ impl Pen {
                 let p1 = mesh.get_point(p1).unwrap();
                 draw_circle(p1.x as f32, p1.y as f32, 3., SKYBLUE);
 
-                if let Some(p2) = p2 {
-                    draw_circle(p2.x as f32, p2.y as f32, 3., SKYBLUE);
-                    draw_line(
-                        p1.x as f32,
-                        p1.y as f32,
-                        p2.x as f32,
-                        p2.y as f32,
-                        1.,
-                        SKYBLUE,
-                    );
-                    let quad_bez = QuadBez::new(p1, p2, mouse_position_point());
-                    draw_bez(quad_bez);
-                }
+                // If there is no handle then draw a line instead.
+                let p2 = p2.unwrap_or(mouse_position_point());
+                draw_circle(p2.x as f32, p2.y as f32, 3., SKYBLUE);
+                draw_line(
+                    p1.x as f32,
+                    p1.y as f32,
+                    p2.x as f32,
+                    p2.y as f32,
+                    1.,
+                    SKYBLUE,
+                );
+                let quad_bez = QuadBez::new(p1, p2, mouse_position_point());
+                draw_bez(quad_bez);
             }
             State::DragSecondPoint(p1, p2, p3, p4) => {
                 let p1 = mesh.get_point(p1).unwrap();

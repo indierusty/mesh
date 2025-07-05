@@ -31,7 +31,18 @@ impl Pen {
                     // create a new point
                     let (x, y) = mouse_position();
                     let mouse_position = Point::new(x as f64, y as f64);
-                    let point_id = mesh.append_point(mouse_position);
+
+                    let point_id = mesh
+                        .closest_point(mouse_position)
+                        .and_then(|(id, point)| {
+                            if point.distance(mouse_position) < 3. {
+                                None
+                            } else {
+                                Some(id)
+                            }
+                        })
+                        .unwrap_or(mesh.append_point(mouse_position));
+
                     // transition to the drag state
                     self.state = State::DragStartPoint(point_id, None);
                 }

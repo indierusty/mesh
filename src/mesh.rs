@@ -155,17 +155,22 @@ impl MMesh {
         Some(id)
     }
 
-    pub fn closest_point(&self, position: Point) -> Option<(PointId, Point)> {
+    pub fn closest_point(&self, point: Point, max_radius: Option<f64>) -> Option<(PointId, Point)> {
         self.points.id.iter().zip(self.points.position.iter()).fold(
             None,
-            |mut closest_point, (id, point)| {
-                if point.distance(position) < 5. {
-                    if !closest_point.is_some_and(|(_, ppoint)| {
-                        point.distance(position) > ppoint.distance(position)
-                    }) {
-                        closest_point = Some((*id, *point))
-                    }
+            |mut closest_point, (next_point_id, next_point)| {
+                if next_point.distance(point) < max_radius.unwrap_or(5.) {
+                    closest_point = match closest_point {
+                        Some((_, closest))
+                            if next_point.distance(closest) < point.distance(closest) =>
+                        {
+                            Some((*next_point_id, *next_point))
+                        }
+                        None => Some((*next_point_id, *next_point)),
+                        x => x,
+                    };
                 }
+
                 closest_point
             },
         )

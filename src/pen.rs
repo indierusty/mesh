@@ -33,7 +33,7 @@ impl Pen {
                     let mouse_position = Point::new(x as f64, y as f64);
 
                     let point_id = mesh
-                        .closest_point(mouse_position)
+                        .closest_point(mouse_position, Some(3.))
                         .and_then(|(id, point)| {
                             if point.distance(mouse_position) < 3. {
                                 None
@@ -80,7 +80,7 @@ impl Pen {
                     } else {
                         // Create a new endpoint or connect the segments
                         let p4 = mesh
-                            .closest_point(mouse_position)
+                            .closest_point(mouse_position, Some(3.))
                             .and_then(|(id, point)| {
                                 if point.distance(mouse_position) < 3. {
                                     None

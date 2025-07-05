@@ -1,6 +1,6 @@
 use kurbo::{BezPath, Point};
 use macroquad::prelude::*;
-use mesh::{HEIGHT, WIDTH, mesh::MMesh, pen::Pen};
+use mesh::{HEIGHT, WIDTH, mesh::MMesh, path::Path, pen::Pen};
 
 fn conf() -> Conf {
     Conf {
@@ -21,7 +21,12 @@ async fn main() {
 
     let mut mesh = MMesh::empty();
     // mesh.append_bezpath(&bezpath);
+
     let mut pen = Pen::new();
+    let mut path = Path::new();
+
+    let mut is_pen_active = true;
+
     let result = mesh.to_bezpath();
 
     println!("bezpath => {:#?}", bezpath);
@@ -30,8 +35,18 @@ async fn main() {
     loop {
         clear_background(WHITE);
         mesh.draw();
-        pen.update(&mut mesh);
-        pen.draw(&mesh);
+        if is_pen_active {
+            pen.update(&mut mesh);
+            pen.draw(&mesh);
+        } else {
+            path.update(&mut mesh);
+            path.draw(&mesh);
+        }
+        if is_key_pressed(KeyCode::Space) {
+            is_pen_active = !is_pen_active;
+            pen = Pen::new();
+            path = Path::new();
+        }
         next_frame().await
     }
 }

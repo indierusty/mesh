@@ -1,5 +1,6 @@
 pub mod mesh;
 pub mod next_id;
+pub mod path;
 pub mod pen;
 pub mod util;
 

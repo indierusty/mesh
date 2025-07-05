@@ -78,9 +78,18 @@ impl Pen {
                     if mesh.get_point(*p1).unwrap().distance(mouse_position) < 5. {
                         self.state = State::DragStartPoint(*p1, Some(mouse_position));
                     } else {
-                        // create a new endpoint
-                        let p4 = mesh.append_point(mouse_position);
-                        // transition to the drag state
+                        // Create a new endpoint or connect the segments
+                        let p4 = mesh
+                            .closest_point(mouse_position)
+                            .and_then(|(id, point)| {
+                                if point.distance(mouse_position) < 3. {
+                                    None
+                                } else {
+                                    Some(id)
+                                }
+                            })
+                            .unwrap_or(mesh.append_point(mouse_position));
+                        // Transition to the drag state
                         self.state = State::DragSecondPoint(*p1, *p2, None, p4);
                     }
                 }

@@ -37,14 +37,9 @@ impl Pen {
 
                     let point_id = mesh
                         .closest_point(mouse_position, Some(3.))
-                        .and_then(|(id, point)| {
-                            if point.distance(mouse_position) < 3. {
-                                None
-                            } else {
-                                Some(id)
-                            }
-                        })
-                        .unwrap_or(mesh.append_point(mouse_position));
+                        .map(|(id, _)| id)
+                        .or_else(|| Some(mesh.append_point(mouse_position)))
+                        .unwrap();
 
                     // transition to the drag state
                     self.state = State::DragStartPoint(point_id, None);
@@ -85,7 +80,8 @@ impl Pen {
                         let p4 = mesh
                             .closest_point(mouse_position, Some(3.))
                             .map(|(id, _)| id)
-                            .unwrap_or(mesh.append_point(mouse_position));
+                            .or_else(|| Some(mesh.append_point(mouse_position)))
+                            .unwrap();
 
                         // Transition to the drag state
                         self.state = State::DragSecondPoint(*p1, *p2, None, p4);

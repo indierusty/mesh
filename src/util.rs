@@ -1,5 +1,10 @@
 use kurbo::{ParamCurve, Point};
-use macroquad::{color::SKYBLUE, input::mouse_position, math::DVec2, shapes::draw_line};
+use macroquad::{
+    color::{Color, SKYBLUE},
+    input::mouse_position,
+    math::DVec2,
+    shapes::{draw_circle, draw_line},
+};
 
 pub fn dvec2_to_point(point: DVec2) -> Point {
     Point {
@@ -43,4 +48,19 @@ pub fn draw_bez(segment: impl ParamCurve) {
         last_point = Some(next_point);
         t += 1e-3;
     }
+}
+
+pub fn xdraw_circle(center: Point, r: f32, color: Color) {
+    draw_circle(center.x as f32, center.y as f32, r, color);
+}
+
+pub fn xdraw_line(p1: Point, p2: Point, thickness: f32, color: Color) {
+    draw_line(
+        p1.x as f32,
+        p1.y as f32,
+        p2.x as f32,
+        p2.y as f32,
+        thickness,
+        color,
+    );
 }

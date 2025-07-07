@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
-use macroquad::{
-    color::{BLACK, GRAY},
-    shapes::{draw_circle, draw_line},
-};
+use macroquad::prelude::*;
 
 use crate::next_id::NextId;
 
@@ -382,7 +379,7 @@ impl MMesh {
 
     pub fn draw(&self) {
         for point in &self.points.position {
-            draw_circle(point.x as f32, point.y as f32, 2., GRAY);
+            draw_circle(point.x as f32, point.y as f32, 3., RED);
         }
         let points = self.points.id.iter().zip(self.points.position.iter()).fold(
             HashMap::new(),

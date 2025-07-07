@@ -3,7 +3,10 @@ use macroquad::prelude::*;
 
 use crate::{
     mesh::{MMesh, PointId},
-    util::{draw_bez, dvec2_to_point, mouse_position_dvec2, mouse_position_point, point_to_dvec2},
+    util::{
+        draw_bez, dvec2_to_point, mouse_position_dvec2, mouse_position_point, point_to_dvec2,
+        xdraw_circle, xdraw_line,
+    },
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -78,17 +81,12 @@ impl Pen {
                     if mesh.get_point(*p1).unwrap().distance(mouse_position) < 5. {
                         self.state = State::DragStartPoint(*p1, Some(mouse_position));
                     } else {
-                        // Create a new endpoint or connect the segments
+                        // Create a new endpoint or connect to existing one.
                         let p4 = mesh
                             .closest_point(mouse_position, Some(3.))
-                            .and_then(|(id, point)| {
-                                if point.distance(mouse_position) < 3. {
-                                    None
-                                } else {
-                                    Some(id)
-                                }
-                            })
+                            .map(|(id, _)| id)
                             .unwrap_or(mesh.append_point(mouse_position));
+
                         // Transition to the drag state
                         self.state = State::DragSecondPoint(*p1, *p2, None, p4);
                     }
@@ -132,35 +130,23 @@ impl Pen {
                 let Some(p1) = mesh.get_point(p1) else {
                     return;
                 };
-                draw_circle(p1.x as f32, p1.y as f32, 3., SKYBLUE);
+                xdraw_circle(p1, 3., SKYBLUE);
 
                 if let Some(p2) = p2 {
-                    draw_circle(p2.x as f32, p2.y as f32, 3., SKYBLUE);
-                    draw_line(
-                        p1.x as f32,
-                        p1.y as f32,
-                        p2.x as f32,
-                        p2.y as f32,
-                        1.,
-                        SKYBLUE,
-                    );
+                    xdraw_circle(p2, 3., SKYBLUE);
+                    xdraw_line(p1, p2, 1., SKYBLUE);
                 }
             }
             State::IdleStartPoint(p1, p2) => {
                 let p1 = mesh.get_point(p1).unwrap();
-                draw_circle(p1.x as f32, p1.y as f32, 3., SKYBLUE);
+                xdraw_circle(p1, 3., SKYBLUE);
 
                 // If there is no handle then draw a line instead.
                 let p2 = p2.unwrap_or(mouse_position_point());
-                draw_circle(p2.x as f32, p2.y as f32, 3., SKYBLUE);
-                draw_line(
-                    p1.x as f32,
-                    p1.y as f32,
-                    p2.x as f32,
-                    p2.y as f32,
-                    1.,
-                    SKYBLUE,
-                );
+
+                xdraw_circle(p2, 3., SKYBLUE);
+                xdraw_line(p1, p2, 1., SKYBLUE);
+
                 let quad_bez = QuadBez::new(p1, p2, mouse_position_point());
                 draw_bez(quad_bez);
             }
@@ -168,11 +154,23 @@ impl Pen {
                 let p1 = mesh.get_point(p1).unwrap();
                 let p4 = mesh.get_point(p4).unwrap();
 
-                draw_circle(p1.x as f32, p1.y as f32, 3., SKYBLUE);
-                draw_circle(p4.x as f32, p4.y as f32, 3., SKYBLUE);
+                xdraw_circle(p1, 3., SKYBLUE);
+                xdraw_circle(p4, 3., SKYBLUE);
+
+                if let Some(p2) = p2 {
+                    xdraw_circle(p2, 3., SKYBLUE);
+                    xdraw_line(p1, p2, 2., SKYBLUE);
+                }
+
+                if let Some(p3) = p3 {
+                    xdraw_circle(p3, 3., SKYBLUE);
+                    xdraw_line(p4, p3, 2., SKYBLUE);
+                }
 
                 match (p2, p3) {
-                    (Some(p2), Some(p3)) => draw_bez(CubicBez::new(p1, p2, p3, p4)),
+                    (Some(p2), Some(p3)) => {
+                        draw_bez(CubicBez::new(p1, p2, p3, p4));
+                    }
                     (Some(p2), None) | (None, Some(p2)) => draw_bez(QuadBez::new(p1, p2, p4)),
                     (None, None) => {
                         draw_bez(Line::new(p1, p4));

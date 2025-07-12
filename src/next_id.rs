@@ -1,3 +1,4 @@
+#[derive(Debug, Clone)]
 pub struct NextId(usize);
 
 impl NextId {

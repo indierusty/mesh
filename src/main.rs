@@ -26,6 +26,7 @@ async fn main() {
     let mut path = Path::new();
 
     let mut is_pen_active = true;
+    let mut edit_mesh = true;
 
     let result = mesh.to_bezpath();
 
@@ -34,13 +35,23 @@ async fn main() {
 
     loop {
         clear_background(WHITE);
+        // if edit_mesh {
+        //     mesh.draw();
+        // } else {
+        //     pmesh.draw();
+        // }
         mesh.draw();
+
         if is_pen_active {
             pen.update(&mut mesh);
             pen.draw(&mesh);
         } else {
             path.update(&mut mesh);
             path.draw(&mesh);
+        }
+        if is_key_pressed(KeyCode::P) {
+            println!("Planar Graph");
+            mesh = mesh.planar_graph();
         }
         if is_key_pressed(KeyCode::Space) {
             is_pen_active = !is_pen_active;

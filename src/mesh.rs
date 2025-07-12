@@ -1,10 +1,13 @@
+pub mod planar;
+
 use std::collections::HashMap;
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 use macroquad::prelude::*;
 
-use crate::next_id::NextId;
+use crate::{algo::path_intersections, next_id::NextId, util::xdraw_circle};
 
+#[derive(Debug, Clone)]
 pub struct MMesh {
     points: PointTable,
     segments: SegmentTable,
@@ -29,6 +32,19 @@ impl PointIndex {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PointData {
+    idx: PointIndex,
+    id: PointId,
+    position: Point,
+}
+
+impl PointData {
+    pub fn new(idx: PointIndex, id: PointId, position: Point) -> Self {
+        Self { idx, id, position }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PointTable {
     id: Vec<PointId>,
@@ -43,9 +59,31 @@ impl PointTable {
         }
     }
 
+    pub fn data(&self) -> Vec<PointData> {
+        (0..self.id.len())
+            .into_iter()
+            .map(|idx| PointData::new(PointIndex(idx), self.id[idx], self.position[idx]))
+            .collect()
+    }
+
     pub fn push(&mut self, id: PointId, position: Point) {
         self.id.push(id);
         self.position.push(position);
+    }
+
+    pub fn remove(&mut self, id: PointId) {
+        let Some(index) = self
+            .id
+            .iter()
+            .enumerate()
+            .find(|(_, this_id)| **this_id == id)
+            .map(|(i, _)| i)
+        else {
+            return;
+        };
+
+        self.id.remove(index);
+        self.position.remove(index);
     }
 }
 
@@ -62,8 +100,51 @@ impl SegmentId {
 pub struct SegmentIndex(usize);
 
 impl SegmentIndex {
-    pub fn index(&self) -> usize {
+    pub fn idx(&self) -> usize {
         self.0
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct SegmentData {
+    idx: SegmentIndex,
+    id: SegmentId,
+    p1: PointId,
+    p2: Option<PointId>,
+    p3: Option<PointId>,
+    p4: PointId,
+}
+
+impl SegmentData {
+    pub fn new(
+        idx: SegmentIndex,
+        id: SegmentId,
+        p1: PointId,
+        p2: Option<PointId>,
+        p3: Option<PointId>,
+        p4: PointId,
+    ) -> Self {
+        Self {
+            idx,
+            id,
+            p1,
+            p2,
+            p3,
+            p4,
+        }
+    }
+
+    pub fn to_path_seg(&self, points: &HashMap<PointId, PointData>) -> PathSeg {
+        let p1 = points.get(&self.p1).unwrap().position;
+        let p2 = self.p2.and_then(|p2| points.get(&p2));
+        let p3 = self.p3.and_then(|p3| points.get(&p3));
+        let p4 = points.get(&self.p4).unwrap().position;
+
+        match (p2, p3) {
+            (Some(p2), Some(p3)) => PathSeg::Cubic(CubicBez::new(p1, p2.position, p3.position, p4)),
+            (Some(p2), None) | (None, Some(p2)) => PathSeg::Quad(QuadBez::new(p1, p2.position, p4)),
+            (None, None) => PathSeg::Line(Line::new(p1, p4)),
+        }
     }
 }
 
@@ -87,6 +168,22 @@ impl SegmentTable {
         }
     }
 
+    pub fn data(&self) -> Vec<SegmentData> {
+        (0..self.id.len())
+            .into_iter()
+            .map(|idx| {
+                SegmentData::new(
+                    SegmentIndex(idx),
+                    self.id[idx],
+                    self.p1[idx],
+                    self.p2[idx],
+                    self.p3[idx],
+                    self.p4[idx],
+                )
+            })
+            .collect()
+    }
+
     pub fn push(
         &mut self,
         id: SegmentId,
@@ -100,6 +197,24 @@ impl SegmentTable {
         self.p2.push(p2);
         self.p3.push(p3);
         self.p4.push(p4);
+    }
+
+    pub fn remove(&mut self, id: SegmentId) {
+        let Some(index) = self
+            .id
+            .iter()
+            .enumerate()
+            .find(|(_, this_id)| **this_id == id)
+            .map(|(i, _)| i)
+        else {
+            return;
+        };
+
+        self.id.remove(index);
+        self.p1.remove(index);
+        self.p2.remove(index);
+        self.p3.remove(index);
+        self.p4.remove(index);
     }
 }
 
@@ -118,6 +233,44 @@ impl MMesh {
 
     pub fn next_segment_id(&mut self) -> SegmentId {
         SegmentId(self.next_id.next())
+    }
+
+    pub fn points_map(&self) -> HashMap<PointId, PointData> {
+        self.points
+            .data()
+            .iter()
+            .fold(HashMap::new(), |mut acc, data| {
+                acc.insert(data.id, *data);
+                acc
+            })
+    }
+
+    pub fn segments_map(&self) -> HashMap<SegmentId, SegmentData> {
+        self.segments
+            .data()
+            .iter()
+            .fold(HashMap::new(), |mut map, data| {
+                map.insert(data.id, *data);
+                map
+            })
+    }
+
+    pub fn segment(&self, index: SegmentIndex, points: &HashMap<PointId, PointData>) -> PathSeg {
+        let p1_id = self.segments.p1[index.idx()];
+        let p2_id = self.segments.p2[index.idx()];
+        let p3_id = self.segments.p3[index.idx()];
+        let p4_id = self.segments.p4[index.idx()];
+
+        let p1 = points.get(&p1_id).unwrap().position;
+        let p2 = p2_id.and_then(|id| points.get(&id)).map(|p| p.position);
+        let p3 = p3_id.and_then(|id| points.get(&id)).map(|p| p.position);
+        let p4 = points.get(&p4_id).unwrap().position;
+
+        match (p2, p3) {
+            (Some(p2), Some(p3)) => PathSeg::Cubic(CubicBez::new(p1, p2, p3, p4)),
+            (Some(p2), None) | (None, Some(p2)) => PathSeg::Quad(QuadBez::new(p1, p2, p4)),
+            (None, None) => PathSeg::Line(Line::new(p1, p4)),
+        }
     }
 
     pub fn append_point(&mut self, point: Point) -> PointId {
@@ -207,18 +360,7 @@ impl MMesh {
         }
 
         if is_floating_point {
-            let index = self
-                .points
-                .id
-                .iter()
-                .enumerate()
-                .find(|(_, id)| **id == point_id)
-                .map(|(index, _)| index);
-
-            if let Some(index) = index {
-                self.points.id.remove(index);
-                self.points.position.remove(index);
-            }
+            self.points.remove(point_id);
         }
     }
 
@@ -241,6 +383,36 @@ impl MMesh {
             self.segments.p2[index] = p2;
             self.segments.p3[index] = p3;
             self.segments.p4[index] = p4;
+        }
+    }
+
+    pub fn remove_segment(&mut self, id: SegmentId) {
+        let Some(index) = self
+            .segments
+            .id
+            .iter()
+            .enumerate()
+            .find(|(_, this_id)| **this_id == id)
+            .map(|(i, _)| i)
+        else {
+            return;
+        };
+
+        let p1 = self.segments.p1[index];
+        let p2 = self.segments.p2[index];
+        let p3 = self.segments.p3[index];
+        let p4 = self.segments.p4[index];
+
+        self.segments.remove(id);
+
+        self.remove_floating_point(p1);
+        self.remove_floating_point(p4);
+
+        if let Some(p2) = p2 {
+            self.points.remove(p2);
+        }
+        if let Some(p3) = p3 {
+            self.points.remove(p3);
         }
     }
 
@@ -389,6 +561,8 @@ impl MMesh {
             },
         );
 
+        let mut segments = Vec::new();
+
         for index in 0..self.segments.id.len() {
             let p1_id = self.segments.p1[index];
             let p2_id = self.segments.p2[index];
@@ -405,6 +579,8 @@ impl MMesh {
                 (Some(p2), None) | (None, Some(p2)) => PathSeg::Quad(QuadBez::new(*p1, *p2, *p4)),
                 (None, None) => PathSeg::Line(Line::new(*p1, *p4)),
             };
+
+            segments.push(segment);
 
             let mut last_point: Option<Point> = None;
             let mut t = 0.;
@@ -427,6 +603,15 @@ impl MMesh {
                 t += 1e-3;
             }
         }
+
+        // for i in 0..segments.len() {
+        //     for j in i + 1..segments.len() {
+        //         for t in path_intersections(segments[i], segments[j]) {
+        //             let p = segments[i].eval(t);
+        //             xdraw_circle(p, 5., GREEN);
+        //         }
+        //     }
+        // }
     }
 }
 

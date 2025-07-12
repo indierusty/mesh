@@ -123,7 +123,7 @@ impl MMesh {
             }
         }
 
-        // TODO: Delete the points in the points table which are merged to the main points. (Might not need to do this.)
+        // Delete the points in the points table which are merged to the main points. (Might not need to do this.)
         result.points.remove_multiple(&merge_points.iter().fold(
             HashSet::new(),
             |mut set, (k, _)| {

@@ -13,12 +13,24 @@ fn intersections(
     let bbox2 = seg2.subsegment(min2..max2).bounding_box();
 
     if bbox1.overlaps(bbox2) {
-        if bbox1.width() < DEFAULT_ACCURACY && bbox1.height() < DEFAULT_ACCURACY {
-            result.push(min1);
-            return;
-        }
         let mid1 = (min1 + max1) / 2.;
         let mid2 = (min2 + max2) / 2.;
+
+        if bbox1.width() < DEFAULT_ACCURACY && bbox1.height() < DEFAULT_ACCURACY {
+            let close_endpoints = seg1.start().distance(seg2.end()) < 0.05
+                || seg1.start().distance(seg2.start()) < 0.05
+                || seg1.end().distance(seg2.end()) < 0.05
+                || seg1.end().distance(seg2.start()) < 0.05;
+
+            let intersect_at_endpoints = mid1 < 0.05 || mid1 > 0.95 || mid2 < 0.05 || mid2 > 0.95;
+
+            // TODO: find a better solution to this.
+            // if intersection is near the endpoints or either segments and their endpoints are closer then we skip the intersection.
+            if !(close_endpoints && intersect_at_endpoints) {
+                result.push(min1);
+            }
+            return;
+        }
         intersections(seg1, min1, mid1, seg2, min2, mid2, result);
         intersections(seg1, min1, mid1, seg2, mid2, max2, result);
         intersections(seg1, mid1, max1, seg2, min2, mid2, result);

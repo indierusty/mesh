@@ -1,6 +1,6 @@
 pub mod planar;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 use macroquad::prelude::*;
@@ -84,6 +84,18 @@ impl PointTable {
 
         self.id.remove(index);
         self.position.remove(index);
+    }
+
+    pub fn remove_multiple(&mut self, points: &HashSet<PointId>) {
+        println!("removing multiple points");
+        let mut new = Self::new();
+        for i in 0..self.id.len() {
+            if !points.contains(&self.id[i]) {
+                new.id.push(self.id[i]);
+                new.position.push(self.position[i]);
+            }
+        }
+        *self = new;
     }
 }
 

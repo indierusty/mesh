@@ -1,4 +1,3 @@
-use glam::Vec2;
 use kurbo::{CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 use macroquad::{
     color::{Color, SKYBLUE},
@@ -6,8 +5,6 @@ use macroquad::{
     math::DVec2,
     shapes::{draw_circle, draw_line},
 };
-
-use crate::mesh::PointId;
 
 pub fn dvec2_to_point(point: DVec2) -> Point {
     Point {

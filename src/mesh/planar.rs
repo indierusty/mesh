@@ -27,22 +27,23 @@ pub fn draw_region((regions, points_map): &(Vec<Vec<SegmentData>>, HashMap<Point
     let colors = [BLUE, GREEN, YELLOW, BROWN];
     let mut ci = 0;
     for (_, region) in regions.iter().enumerate() {
-        let bez = BezPath::from_path_segments(region.iter().map(|d| {
+        let mut bez = BezPath::from_path_segments(region.iter().map(|d| {
             match d.direction.unwrap_or(Direction::StartToEnd) {
                 Direction::StartToEnd => points_id_to_segment(&points_map, d.p1, d.p2, d.p3, d.p4),
                 Direction::EndToStart => points_id_to_segment(&points_map, d.p4, d.p3, d.p2, d.p1),
             }
         }));
+        bez.close_path();
 
         let bbox = bez.bounding_box();
 
-        for x in (0..bbox.width() as usize).skip(10) {
-            for y in (0..bbox.height() as usize).skip(10) {
+        for x in (0..bbox.width() as usize).step_by(10) {
+            for y in (0..bbox.height() as usize).step_by(10) {
                 let x = x as f64 + bbox.x0;
                 let y = y as f64 + bbox.y0;
                 let point = Point::new(x as f64, y as f64);
                 if bez.contains(point) {
-                    draw_rectangle(x as f32, y as f32, 3., 3., colors[ci % colors.iter().len()]);
+                    draw_rectangle(x as f32, y as f32, 3., 3., colors[ci % colors.len()]);
                 }
             }
         }
@@ -199,7 +200,7 @@ impl MMesh {
         result
     }
 
-    pub fn cal_regions(&self) -> (Vec<Vec<SegmentData>>, HashMap<PointId, PointData>) {
+    pub fn calculate_regions(&self) -> (Vec<Vec<SegmentData>>, HashMap<PointId, PointData>) {
         let points_map = self.points_map();
         let segment_data = self.segments.data();
 
@@ -212,26 +213,47 @@ impl MMesh {
             if !visited_start_to_end.contains(&curr_seg.id) {
                 let mut region = Vec::new();
                 let mut next_curr_seg = *curr_seg;
+                next_curr_seg.direction = Some(Direction::StartToEnd);
                 'a: loop {
                     let mut closest_next_seg = None;
 
                     // Iterate thourgh all the segment which are connect to next_curr_seg and find the segment which has closest angle between in anticlock direction.
                     for next_seg in &segment_data {
-                        let connected =
-                            next_curr_seg.p4 == next_seg.p1 || next_curr_seg.p4 == next_seg.p4;
+                        let connected = match next_curr_seg.direction.unwrap() {
+                            Direction::StartToEnd => {
+                                next_curr_seg.p4 == next_seg.p1 || next_curr_seg.p4 == next_seg.p4
+                            }
+                            Direction::EndToStart => {
+                                next_curr_seg.p1 == next_seg.p1 || next_curr_seg.p1 == next_seg.p4
+                            }
+                        };
+
                         let same_segment = next_curr_seg.id == next_seg.id;
                         if same_segment || !connected {
                             continue;
                         }
                         let mut next_seg = next_seg.clone();
-                        let curr_pseg = points_id_to_segment(
-                            &points_map,
-                            next_curr_seg.p1,
-                            next_curr_seg.p2,
-                            next_curr_seg.p3,
-                            next_curr_seg.p4,
-                        );
-                        let next_pseg = if next_seg.p1 == next_curr_seg.p4 {
+                        let curr_pseg = match next_curr_seg.direction.unwrap() {
+                            Direction::StartToEnd => points_id_to_segment(
+                                &points_map,
+                                next_curr_seg.p1,
+                                next_curr_seg.p2,
+                                next_curr_seg.p3,
+                                next_curr_seg.p4,
+                            ),
+                            Direction::EndToStart => points_id_to_segment(
+                                &points_map,
+                                next_curr_seg.p4,
+                                next_curr_seg.p3,
+                                next_curr_seg.p2,
+                                next_curr_seg.p1,
+                            ),
+                        };
+                        let next_pseg = if next_seg.p1
+                            == match next_curr_seg.direction.unwrap() {
+                                Direction::StartToEnd => next_curr_seg.p4,
+                                Direction::EndToStart => next_curr_seg.p1,
+                            } {
                             // Measure the angle between endpoints in anticlockwise direction.
                             next_seg.direction = Some(Direction::StartToEnd);
                             points_id_to_segment(
@@ -310,26 +332,46 @@ impl MMesh {
             }
             if !visited_end_to_start.contains(&curr_seg.id) {
                 let mut next_curr_seg = *curr_seg;
+                next_curr_seg.direction = Some(Direction::EndToStart);
                 let mut region = Vec::new();
                 'a: loop {
                     let mut closest_next_seg = None;
                     // Iterate thourgh all the segment which are connect to next_curr_seg and find the segment which has closest angle between in anticlock direction.
                     for next_seg in &segment_data {
-                        let connected =
-                            next_curr_seg.p1 == next_seg.p1 || next_curr_seg.p1 == next_seg.p4;
+                        let connected = match next_curr_seg.direction.unwrap() {
+                            Direction::StartToEnd => {
+                                next_curr_seg.p4 == next_seg.p1 || next_curr_seg.p4 == next_seg.p4
+                            }
+                            Direction::EndToStart => {
+                                next_curr_seg.p1 == next_seg.p1 || next_curr_seg.p1 == next_seg.p4
+                            }
+                        };
                         let same_segment = next_curr_seg.id == next_seg.id;
                         if same_segment || !connected {
                             continue;
                         }
                         let mut next_seg = next_seg.clone();
-                        let curr_pseg = points_id_to_segment(
-                            &points_map,
-                            next_curr_seg.p4,
-                            next_curr_seg.p3,
-                            next_curr_seg.p2,
-                            next_curr_seg.p1,
-                        );
-                        let next_pseg = if next_seg.p1 == next_curr_seg.p1 {
+                        let curr_pseg = match next_curr_seg.direction.unwrap() {
+                            Direction::StartToEnd => points_id_to_segment(
+                                &points_map,
+                                next_curr_seg.p1,
+                                next_curr_seg.p2,
+                                next_curr_seg.p3,
+                                next_curr_seg.p4,
+                            ),
+                            Direction::EndToStart => points_id_to_segment(
+                                &points_map,
+                                next_curr_seg.p4,
+                                next_curr_seg.p3,
+                                next_curr_seg.p2,
+                                next_curr_seg.p1,
+                            ),
+                        };
+                        let next_pseg = if next_seg.p1
+                            == match next_curr_seg.direction.unwrap() {
+                                Direction::StartToEnd => next_curr_seg.p4,
+                                Direction::EndToStart => next_curr_seg.p1,
+                            } {
                             // Measure the angle between endpoints in anticlockwise direction.
                             next_seg.direction = Some(Direction::StartToEnd);
                             points_id_to_segment(
@@ -350,8 +392,8 @@ impl MMesh {
                             )
                         };
 
-                        let curr_start = curr_pseg.eval(0.99);
-                        let curr_end = curr_pseg.eval(1.);
+                        let curr_start = curr_pseg.eval(1.);
+                        let curr_end = curr_pseg.eval(0.99);
                         let curr_dir = point_to_gvec2(curr_end) - point_to_gvec2(curr_start);
 
                         let next_start = next_pseg.eval(0.);

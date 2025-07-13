@@ -1,6 +1,17 @@
-use kurbo::{BezPath, Point};
+use std::collections::HashMap;
+
+use kurbo::{BezPath, Point, Shape};
 use macroquad::prelude::*;
-use mesh::{HEIGHT, WIDTH, mesh::MMesh, path::Path, pen::Pen};
+use mesh::{
+    HEIGHT, WIDTH,
+    mesh::{
+        MMesh, PointData, PointId, SegmentData,
+        planar::{draw_region, points_id_to_segment},
+    },
+    path::Path,
+    pen::Pen,
+    util::{draw_bez, xdraw_circle},
+};
 
 fn conf() -> Conf {
     Conf {
@@ -20,6 +31,7 @@ async fn main() {
     bezpath.quad_to(Point::new(200., 220.), Point::new(200., 300.));
 
     let mut mesh = MMesh::empty();
+    let mut region = (Vec::new(), HashMap::new());
     // mesh.append_bezpath(&bezpath);
 
     let mut pen = Pen::new();
@@ -49,10 +61,12 @@ async fn main() {
             path.update(&mut mesh);
             path.draw(&mesh);
         }
-        if is_key_pressed(KeyCode::P) {
+        if is_key_down(KeyCode::P) {
             println!("Planar Graph");
-            mesh = mesh.planar_graph();
+            let (mmh, r) = mesh.planar_graph();
+            draw_region(&r);
         }
+        draw_region(&region);
         if is_key_pressed(KeyCode::Space) {
             is_pen_active = !is_pen_active;
             pen = Pen::new();

@@ -1,10 +1,13 @@
-use kurbo::{ParamCurve, Point};
+use glam::Vec2;
+use kurbo::{CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 use macroquad::{
     color::{Color, SKYBLUE},
     input::mouse_position,
     math::DVec2,
     shapes::{draw_circle, draw_line},
 };
+
+use crate::mesh::PointId;
 
 pub fn dvec2_to_point(point: DVec2) -> Point {
     Point {
@@ -18,6 +21,10 @@ pub fn point_to_dvec2(point: Point) -> DVec2 {
         x: point.x,
         y: point.y,
     }
+}
+
+pub fn point_to_gvec2(point: Point) -> glam::Vec2 {
+    glam::Vec2::new(point.x as f32, point.y as f32)
 }
 
 pub fn mouse_position_dvec2() -> DVec2 {
@@ -47,6 +54,14 @@ pub fn draw_bez(segment: impl ParamCurve) {
         }
         last_point = Some(next_point);
         t += 1e-3;
+    }
+}
+
+pub fn points_to_segment(p1: Point, p2: Option<Point>, p3: Option<Point>, p4: Point) -> PathSeg {
+    match (p2, p3) {
+        (None, None) => PathSeg::Line(Line::new(p1, p4)),
+        (Some(p2), None) | (None, Some(p2)) => PathSeg::Quad(QuadBez::new(p1, p2, p4)),
+        (Some(p2), Some(p3)) => PathSeg::Cubic(CubicBez::new(p1, p2, p3, p4)),
     }
 }
 

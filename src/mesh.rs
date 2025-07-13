@@ -2,8 +2,9 @@ pub mod planar;
 
 use std::collections::{HashMap, HashSet};
 
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez, Shape};
 use macroquad::prelude::*;
+use planar::{Direction, points_id_to_segment};
 
 use crate::{algo::path_intersections, next_id::NextId, util::xdraw_circle};
 
@@ -125,6 +126,8 @@ pub struct SegmentData {
     p2: Option<PointId>,
     p3: Option<PointId>,
     p4: PointId,
+    parent: Option<SegmentId>,
+    direction: Option<Direction>,
 }
 
 impl SegmentData {
@@ -135,6 +138,8 @@ impl SegmentData {
         p2: Option<PointId>,
         p3: Option<PointId>,
         p4: PointId,
+        parent: Option<SegmentId>,
+        direction: Option<Direction>,
     ) -> Self {
         Self {
             idx,
@@ -143,6 +148,8 @@ impl SegmentData {
             p2,
             p3,
             p4,
+            parent,
+            direction,
         }
     }
 
@@ -191,6 +198,8 @@ impl SegmentTable {
                     self.p2[idx],
                     self.p3[idx],
                     self.p4[idx],
+                    None,
+                    None,
                 )
             })
             .collect()

@@ -1,13 +1,68 @@
 use std::{
-    cmp::Ordering,
     collections::{HashMap, HashSet},
+    f32::consts::PI,
 };
 
-use kurbo::ParamCurve;
+use kurbo::{BezPath, ParamCurve, PathSeg, Point, Shape};
+use macroquad::{
+    color::{BLUE, BROWN, GREEN, YELLOW},
+    shapes::draw_rectangle,
+};
 
-use crate::{algo::path_intersections, mesh::MMesh};
+use crate::{
+    algo::path_intersections,
+    mesh::MMesh,
+    util::{point_to_gvec2, points_to_segment},
+};
 
-use super::{PointData, PointId};
+use super::{PointData, PointId, SegmentData, SegmentId};
+
+#[derive(Clone, Copy, Debug)]
+pub enum Direction {
+    StartToEnd,
+    EndToStart,
+}
+
+pub fn draw_region((regions, points_map): &(Vec<Vec<SegmentData>>, HashMap<PointId, PointData>)) {
+    let colors = [BLUE, GREEN, YELLOW, BROWN];
+    let mut ci = 0;
+    for (_, region) in regions.iter().enumerate() {
+        let bez = BezPath::from_path_segments(region.iter().map(|d| {
+            match d.direction.unwrap_or(Direction::StartToEnd) {
+                Direction::StartToEnd => points_id_to_segment(&points_map, d.p1, d.p2, d.p3, d.p4),
+                Direction::EndToStart => points_id_to_segment(&points_map, d.p4, d.p3, d.p2, d.p1),
+            }
+        }));
+
+        let bbox = bez.bounding_box();
+
+        for x in (0..bbox.width() as usize).skip(10) {
+            for y in (0..bbox.height() as usize).skip(10) {
+                let x = x as f64 + bbox.x0;
+                let y = y as f64 + bbox.y0;
+                let point = Point::new(x as f64, y as f64);
+                if bez.contains(point) {
+                    draw_rectangle(x as f32, y as f32, 3., 3., colors[ci % colors.iter().len()]);
+                }
+            }
+        }
+        ci += 1;
+    }
+}
+
+pub fn points_id_to_segment(
+    points_map: &HashMap<PointId, PointData>,
+    p1: PointId,
+    p2: Option<PointId>,
+    p3: Option<PointId>,
+    p4: PointId,
+) -> PathSeg {
+    let p1 = points_map.get(&p1).unwrap().position;
+    let p2 = p2.and_then(|p2| points_map.get(&p2)).map(|p| p.position);
+    let p3 = p3.and_then(|p3| points_map.get(&p3)).map(|p| p.position);
+    let p4 = points_map.get(&p4).unwrap().position;
+    points_to_segment(p1, p2, p3, p4)
+}
 
 fn cleanup_intersections(intersections: &[f64]) -> Vec<f64> {
     let mut intersections = intersections
@@ -35,7 +90,7 @@ fn cleanup_intersections(intersections: &[f64]) -> Vec<f64> {
 }
 
 impl MMesh {
-    pub fn planar_graph(&self) -> MMesh {
+    pub fn planar_graph(&self) -> (MMesh, (Vec<Vec<SegmentData>>, HashMap<PointId, PointData>)) {
         let points_map = self.points_map();
         let segments_data = self.segments.data();
 
@@ -133,77 +188,215 @@ impl MMesh {
         ));
         ////////////////////////////////////////////////////////////////////////////////
 
-        result
-    }
+        // let segments_from_start = segments_data.iter().fold(HashMap::new(), |mut acc, data| {
+        //     acc.insert(data.p1, *data);
+        //     acc
+        // });
+        // let segments_from_end = segments_data.iter().fold(HashMap::new(), |mut acc, data| {
+        //     acc.insert(data.p4, *data);
+        //     acc
+        // });
 
-    pub fn prev_planar_graph(&self) -> MMesh {
-        print!("Planar!!\n");
-        let points = self.points_map();
-        let segments_data = self.segments.data();
-        println!("segment data {:#?}", segments_data);
+        let rpoints_map = result.points_map();
+        let rsegments_data = result.segments.data();
 
-        let mut new_mesh = self.clone();
+        let mut visited_start_to_end: HashSet<SegmentId> = HashSet::new();
+        let mut visited_end_to_start: HashSet<SegmentId> = HashSet::new();
 
-        // Collect all the intersections for each segments in the mesh.
-        for i in 0..segments_data.len() {
-            let seg1_data = segments_data[i];
-            let seg1 = self.segment(seg1_data.idx, &points);
-            let mut intersections = Vec::new();
+        let mut regions = Vec::new();
 
-            for j in 0..segments_data.len() {
-                if i == j {
-                    continue;
+        for curr_seg in &rsegments_data {
+            if !visited_start_to_end.contains(&curr_seg.id) {
+                let mut region = Vec::new();
+                let mut next_curr_seg = *curr_seg;
+                'a: loop {
+                    let mut closest_next_seg = None;
+
+                    // Iterate thourgh all the segment which are connect to next_curr_seg and find the segment which has closest angle between in anticlock direction.
+                    for next_seg in &rsegments_data {
+                        let connected =
+                            next_curr_seg.p4 == next_seg.p1 || next_curr_seg.p4 == next_seg.p4;
+                        let same_segment = next_curr_seg.id == next_seg.id;
+                        if same_segment || !connected {
+                            continue;
+                        }
+                        let mut next_seg = next_seg.clone();
+                        let curr_pseg = points_id_to_segment(
+                            &rpoints_map,
+                            next_curr_seg.p1,
+                            next_curr_seg.p2,
+                            next_curr_seg.p3,
+                            next_curr_seg.p4,
+                        );
+                        let next_pseg = if next_seg.p1 == next_curr_seg.p4 {
+                            // Measure the angle between endpoints in anticlockwise direction.
+                            next_seg.direction = Some(Direction::StartToEnd);
+                            points_id_to_segment(
+                                &rpoints_map,
+                                next_seg.p1,
+                                next_seg.p2,
+                                next_seg.p3,
+                                next_seg.p4,
+                            )
+                        } else {
+                            next_seg.direction = Some(Direction::EndToStart);
+                            points_id_to_segment(
+                                &rpoints_map,
+                                next_seg.p4,
+                                next_seg.p3,
+                                next_seg.p2,
+                                next_seg.p1,
+                            )
+                        };
+
+                        let curr_start = curr_pseg.eval(1.);
+                        let curr_end = curr_pseg.eval(0.99);
+                        let curr_dir = point_to_gvec2(curr_end) - point_to_gvec2(curr_start);
+
+                        let next_start = next_pseg.eval(0.);
+                        let next_end = next_pseg.eval(0.01);
+                        let next_dir = point_to_gvec2(next_end) - point_to_gvec2(next_start);
+
+                        let angle = curr_dir.angle_to(next_dir);
+                        let angle = if angle.is_sign_negative() {
+                            2. * PI + angle
+                        } else {
+                            angle
+                        };
+
+                        closest_next_seg = closest_next_seg
+                            .and_then(|(prev_seg, prev_angle)| {
+                                if angle < prev_angle {
+                                    Some((next_seg, angle))
+                                } else {
+                                    Some((prev_seg, prev_angle))
+                                }
+                            })
+                            .or(Some((next_seg, angle)));
+                    }
+
+                    println!("closest_next_seg {:?}", closest_next_seg);
+
+                    match closest_next_seg {
+                        Some((next_seg, _angle)) => {
+                            match next_seg.direction.unwrap() {
+                                Direction::StartToEnd => visited_start_to_end.insert(next_seg.id),
+                                Direction::EndToStart => visited_end_to_start.insert(next_seg.id),
+                            };
+
+                            region.push(next_seg);
+
+                            if next_seg.id == curr_seg.id {
+                                regions.push(region);
+
+                                // Reached to the beginning of the region hence we close the region and break loop
+                                break 'a;
+                            } else {
+                                next_curr_seg = next_seg;
+                            }
+                        }
+                        None => {
+                            // This is an open path so no region will be formed.
+                            break 'a;
+                        }
+                    }
                 }
-                let seg2_data = segments_data[j];
-                let seg2 = self.segment(seg2_data.idx, &points);
-                intersections.append(&mut path_intersections(seg1, seg2));
             }
+            if !visited_end_to_start.contains(&curr_seg.id) {
+                let mut next_curr_seg = *curr_seg;
+                let mut region = Vec::new();
+                'a: loop {
+                    let mut closest_next_seg = None;
+                    // Iterate thourgh all the segment which are connect to next_curr_seg and find the segment which has closest angle between in anticlock direction.
+                    for next_seg in &rsegments_data {
+                        let connected =
+                            next_curr_seg.p1 == next_seg.p1 || next_curr_seg.p1 == next_seg.p4;
+                        let same_segment = next_curr_seg.id == next_seg.id;
+                        if same_segment || !connected {
+                            continue;
+                        }
+                        let mut next_seg = next_seg.clone();
+                        let curr_pseg = points_id_to_segment(
+                            &rpoints_map,
+                            next_curr_seg.p4,
+                            next_curr_seg.p3,
+                            next_curr_seg.p2,
+                            next_curr_seg.p1,
+                        );
+                        let next_pseg = if next_seg.p1 == next_curr_seg.p1 {
+                            // Measure the angle between endpoints in anticlockwise direction.
+                            next_seg.direction = Some(Direction::StartToEnd);
+                            points_id_to_segment(
+                                &rpoints_map,
+                                next_seg.p1,
+                                next_seg.p2,
+                                next_seg.p3,
+                                next_seg.p4,
+                            )
+                        } else {
+                            next_seg.direction = Some(Direction::EndToStart);
+                            points_id_to_segment(
+                                &rpoints_map,
+                                next_seg.p4,
+                                next_seg.p3,
+                                next_seg.p2,
+                                next_seg.p1,
+                            )
+                        };
 
-            let mut intersections = intersections
-                .iter()
-                .filter(|t| **t > 0.01 && **t < 0.09)
-                .map(|t| *t)
-                .collect::<Vec<f64>>();
+                        let curr_start = curr_pseg.eval(0.99);
+                        let curr_end = curr_pseg.eval(1.);
+                        let curr_dir = point_to_gvec2(curr_end) - point_to_gvec2(curr_start);
 
-            intersections.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-            intersections.push(1.);
+                        let next_start = next_pseg.eval(0.);
+                        let next_end = next_pseg.eval(0.01);
+                        let next_dir = point_to_gvec2(next_end) - point_to_gvec2(next_start);
 
-            println!("Intersection {:?}", intersections);
+                        let angle = curr_dir.angle_to(next_dir);
+                        let angle = if angle.is_sign_negative() {
+                            2. * PI + angle
+                        } else {
+                            angle
+                        };
 
-            let mut last_point: Option<(PointId, f64)> = None;
+                        closest_next_seg = closest_next_seg
+                            .and_then(|(prev_seg, prev_angle)| {
+                                if angle < prev_angle {
+                                    Some((next_seg, angle))
+                                } else {
+                                    Some((prev_seg, prev_angle))
+                                }
+                            })
+                            .or(Some((next_seg, angle)));
+                    }
 
-            for t in intersections {
-                let p1 = last_point.unwrap_or((seg1_data.p1, 0.));
-                let subseg = seg1.subsegment(p1.1..t);
+                    match closest_next_seg {
+                        Some((next_seg, _angle)) => {
+                            match next_seg.direction.unwrap() {
+                                Direction::StartToEnd => visited_start_to_end.insert(next_seg.id),
+                                Direction::EndToStart => visited_end_to_start.insert(next_seg.id),
+                            };
 
-                let p4 = if t == 1. {
-                    seg1_data.p4
-                } else if let Some(closest_point) = new_mesh.closest_point(subseg.end(), Some(1.)) {
-                    closest_point.0
-                } else {
-                    new_mesh.append_point(subseg.end())
-                };
+                            println!("Pushed a next_seg ID: {:?}", next_seg.id);
+                            region.push(next_seg);
 
-                println!("p1 {:?}, p4 {:?}", p1, (p4, t));
-
-                let (p2, p3) = match subseg {
-                    kurbo::PathSeg::Line(_) => (None, None),
-                    kurbo::PathSeg::Quad(quad) => (Some(new_mesh.append_point(quad.p1)), None),
-                    kurbo::PathSeg::Cubic(cubic) => (
-                        Some(new_mesh.append_point(cubic.p1)),
-                        Some(new_mesh.append_point(cubic.p2)),
-                    ),
-                };
-
-                new_mesh.append_segment(p1.0, p2, p3, p4);
-
-                last_point = Some((p4, t));
+                            if next_seg.id == curr_seg.id {
+                                regions.push(region);
+                                // Reached to the beginning of the region hence we close the region and break loop
+                                break 'a;
+                            } else {
+                                next_curr_seg = next_seg;
+                            }
+                        }
+                        None => {
+                            // This is an open path so no region will be formed.
+                            break 'a;
+                        }
+                    }
+                }
             }
-            // TODO: delete original segment
-            new_mesh.remove_segment(seg1_data.id);
         }
 
-        println!("new segment data {:#?}", new_mesh.segments.data());
-        new_mesh
+        (result, (regions, rpoints_map))
     }
 }

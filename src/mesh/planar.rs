@@ -90,7 +90,7 @@ fn cleanup_intersections(intersections: &[f64]) -> Vec<f64> {
 }
 
 impl MMesh {
-    pub fn planar_graph(&self) -> (MMesh, (Vec<Vec<SegmentData>>, HashMap<PointId, PointData>)) {
+    pub fn planar_graph(&self) -> MMesh {
         let points_map = self.points_map();
         let segments_data = self.segments.data();
 
@@ -196,16 +196,19 @@ impl MMesh {
         //     acc.insert(data.p4, *data);
         //     acc
         // });
+        result
+    }
 
-        let rpoints_map = result.points_map();
-        let rsegments_data = result.segments.data();
+    pub fn cal_regions(&self) -> (Vec<Vec<SegmentData>>, HashMap<PointId, PointData>) {
+        let points_map = self.points_map();
+        let segment_data = self.segments.data();
 
         let mut visited_start_to_end: HashSet<SegmentId> = HashSet::new();
         let mut visited_end_to_start: HashSet<SegmentId> = HashSet::new();
 
         let mut regions = Vec::new();
 
-        for curr_seg in &rsegments_data {
+        for curr_seg in &segment_data {
             if !visited_start_to_end.contains(&curr_seg.id) {
                 let mut region = Vec::new();
                 let mut next_curr_seg = *curr_seg;
@@ -213,7 +216,7 @@ impl MMesh {
                     let mut closest_next_seg = None;
 
                     // Iterate thourgh all the segment which are connect to next_curr_seg and find the segment which has closest angle between in anticlock direction.
-                    for next_seg in &rsegments_data {
+                    for next_seg in &segment_data {
                         let connected =
                             next_curr_seg.p4 == next_seg.p1 || next_curr_seg.p4 == next_seg.p4;
                         let same_segment = next_curr_seg.id == next_seg.id;
@@ -222,7 +225,7 @@ impl MMesh {
                         }
                         let mut next_seg = next_seg.clone();
                         let curr_pseg = points_id_to_segment(
-                            &rpoints_map,
+                            &points_map,
                             next_curr_seg.p1,
                             next_curr_seg.p2,
                             next_curr_seg.p3,
@@ -232,7 +235,7 @@ impl MMesh {
                             // Measure the angle between endpoints in anticlockwise direction.
                             next_seg.direction = Some(Direction::StartToEnd);
                             points_id_to_segment(
-                                &rpoints_map,
+                                &points_map,
                                 next_seg.p1,
                                 next_seg.p2,
                                 next_seg.p3,
@@ -241,7 +244,7 @@ impl MMesh {
                         } else {
                             next_seg.direction = Some(Direction::EndToStart);
                             points_id_to_segment(
-                                &rpoints_map,
+                                &points_map,
                                 next_seg.p4,
                                 next_seg.p3,
                                 next_seg.p2,
@@ -259,7 +262,7 @@ impl MMesh {
 
                         let angle = curr_dir.angle_to(next_dir);
                         let angle = if angle.is_sign_negative() {
-                            2. * PI + angle
+                            PI + (PI + angle)
                         } else {
                             angle
                         };
@@ -275,7 +278,10 @@ impl MMesh {
                             .or(Some((next_seg, angle)));
                     }
 
-                    println!("closest_next_seg {:?}", closest_next_seg);
+                    println!(
+                        "closest_next_seg {:?}, curr seg {:?}",
+                        closest_next_seg, curr_seg.id
+                    );
 
                     match closest_next_seg {
                         Some((next_seg, _angle)) => {
@@ -308,7 +314,7 @@ impl MMesh {
                 'a: loop {
                     let mut closest_next_seg = None;
                     // Iterate thourgh all the segment which are connect to next_curr_seg and find the segment which has closest angle between in anticlock direction.
-                    for next_seg in &rsegments_data {
+                    for next_seg in &segment_data {
                         let connected =
                             next_curr_seg.p1 == next_seg.p1 || next_curr_seg.p1 == next_seg.p4;
                         let same_segment = next_curr_seg.id == next_seg.id;
@@ -317,7 +323,7 @@ impl MMesh {
                         }
                         let mut next_seg = next_seg.clone();
                         let curr_pseg = points_id_to_segment(
-                            &rpoints_map,
+                            &points_map,
                             next_curr_seg.p4,
                             next_curr_seg.p3,
                             next_curr_seg.p2,
@@ -327,7 +333,7 @@ impl MMesh {
                             // Measure the angle between endpoints in anticlockwise direction.
                             next_seg.direction = Some(Direction::StartToEnd);
                             points_id_to_segment(
-                                &rpoints_map,
+                                &points_map,
                                 next_seg.p1,
                                 next_seg.p2,
                                 next_seg.p3,
@@ -336,7 +342,7 @@ impl MMesh {
                         } else {
                             next_seg.direction = Some(Direction::EndToStart);
                             points_id_to_segment(
-                                &rpoints_map,
+                                &points_map,
                                 next_seg.p4,
                                 next_seg.p3,
                                 next_seg.p2,
@@ -397,6 +403,6 @@ impl MMesh {
             }
         }
 
-        (result, (regions, rpoints_map))
+        (regions, points_map)
     }
 }

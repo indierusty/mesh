@@ -63,8 +63,11 @@ async fn main() {
         }
         if is_key_down(KeyCode::P) {
             println!("Planar Graph");
-            let (mmh, r) = mesh.planar_graph();
+            let r = mesh.planar_graph().cal_regions();
             draw_region(&r);
+        }
+        if is_key_pressed(KeyCode::A) {
+            mesh = mesh.planar_graph();
         }
         draw_region(&region);
         if is_key_pressed(KeyCode::Space) {

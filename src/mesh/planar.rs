@@ -392,6 +392,7 @@ impl MMesh {
                             )
                         };
 
+                        // TODO: Find a better way to do this
                         let curr_start = curr_pseg.eval(1.);
                         let curr_end = curr_pseg.eval(0.99);
                         let curr_dir = point_to_gvec2(curr_end) - point_to_gvec2(curr_start);

@@ -2,11 +2,11 @@ pub mod planar;
 
 use std::collections::{HashMap, HashSet};
 
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez, Shape};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 use macroquad::prelude::*;
-use planar::{Direction, points_id_to_segment};
+use planar::Direction;
 
-use crate::{algo::path_intersections, next_id::NextId, util::xdraw_circle};
+use crate::next_id::NextId;
 
 #[derive(Debug, Clone)]
 pub struct MMesh {

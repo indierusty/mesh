@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use kurbo::{BezPath, Point};
 use macroquad::prelude::*;
 use mesh::{
@@ -33,7 +31,7 @@ async fn main() {
     let mut path = Path::new();
 
     let mut is_pen_active = true;
-    let mut edit_mesh = true;
+    // let mut edit_mesh = true;
 
     let result = mesh.to_bezpath();
 

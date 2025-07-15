@@ -4,7 +4,6 @@ use std::collections::{HashMap, HashSet};
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 use macroquad::prelude::*;
-use planar::Direction;
 
 use crate::next_id::NextId;
 

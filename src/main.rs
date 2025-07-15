@@ -6,7 +6,7 @@ use mesh::{
     HEIGHT, WIDTH,
     mesh::{
         MMesh,
-        planar::{XColor, calculate_and_draw_style, draw_region},
+        planar::{XColor, calculate_and_draw_style},
     },
     path::Path,
     pen::Pen,
@@ -70,7 +70,7 @@ async fn main() {
             setcolor = Some((mouse_position_point(), XColor::Blue));
         } else if is_key_pressed(KeyCode::Y) {
             setcolor = Some((mouse_position_point(), XColor::Yellow));
-        } else if is_key_pressed(KeyCode::B) {
+        } else if is_key_pressed(KeyCode::C) {
             setcolor = Some((mouse_position_point(), XColor::Blank));
         }
         if is_key_down(KeyCode::D) {

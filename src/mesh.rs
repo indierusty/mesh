@@ -126,8 +126,6 @@ pub struct SegmentData {
     p2: Option<PointId>,
     p3: Option<PointId>,
     p4: PointId,
-    parent: Option<SegmentId>,
-    direction: Option<Direction>,
 }
 
 impl SegmentData {
@@ -138,8 +136,6 @@ impl SegmentData {
         p2: Option<PointId>,
         p3: Option<PointId>,
         p4: PointId,
-        parent: Option<SegmentId>,
-        direction: Option<Direction>,
     ) -> Self {
         Self {
             idx,
@@ -148,8 +144,6 @@ impl SegmentData {
             p2,
             p3,
             p4,
-            parent,
-            direction,
         }
     }
 
@@ -198,8 +192,6 @@ impl SegmentTable {
                     self.p2[idx],
                     self.p3[idx],
                     self.p4[idx],
-                    None,
-                    None,
                 )
             })
             .collect()

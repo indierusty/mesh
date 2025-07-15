@@ -56,8 +56,8 @@ async fn main() {
         }
         if is_key_down(KeyCode::D) {
             println!("Planar Graph");
-            let r = mesh.planar_graph().calculate_regions();
-            draw_region(&r);
+            let (regions, points) = mesh.planar_graph().calculate_regions();
+            draw_region(&regions, &points);
         }
         if is_key_pressed(KeyCode::P) {
             mesh = mesh.planar_graph();

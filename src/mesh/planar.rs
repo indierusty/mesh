@@ -23,16 +23,18 @@ pub enum Direction {
     EndToStart,
 }
 
-pub fn draw_region((regions, points_map): &(Vec<Vec<SegmentData>>, HashMap<PointId, PointData>)) {
+pub fn draw_region(
+    regions: &Vec<Vec<(SegmentData, Direction)>>,
+    points: &HashMap<PointId, PointData>,
+) {
     let colors = [BLUE, GREEN, YELLOW, BROWN];
     let mut ci = 0;
     for (_, region) in regions.iter().enumerate() {
-        let mut bez = BezPath::from_path_segments(region.iter().map(|d| {
-            match d.direction.unwrap_or(Direction::StartToEnd) {
-                Direction::StartToEnd => points_id_to_segment(&points_map, d.p1, d.p2, d.p3, d.p4),
-                Direction::EndToStart => points_id_to_segment(&points_map, d.p4, d.p3, d.p2, d.p1),
-            }
-        }));
+        let mut bez = BezPath::from_path_segments(
+            region
+                .iter()
+                .map(|(data, direction)| segment_data_to_pathseg(&points, *data, *direction)),
+        );
         bez.close_path();
 
         let bbox = bez.bounding_box();
@@ -51,13 +53,15 @@ pub fn draw_region((regions, points_map): &(Vec<Vec<SegmentData>>, HashMap<Point
     }
 }
 
-pub fn points_id_to_segment(
+pub fn segment_data_to_pathseg(
     points_map: &HashMap<PointId, PointData>,
-    p1: PointId,
-    p2: Option<PointId>,
-    p3: Option<PointId>,
-    p4: PointId,
+    data: SegmentData,
+    direction: Direction,
 ) -> PathSeg {
+    let (p1, p2, p3, p4) = match direction {
+        Direction::StartToEnd => (data.p1, data.p2, data.p3, data.p4),
+        Direction::EndToStart => (data.p4, data.p3, data.p2, data.p1),
+    };
     let p1 = points_map.get(&p1).unwrap().position;
     let p2 = p2.and_then(|p2| points_map.get(&p2)).map(|p| p.position);
     let p3 = p3.and_then(|p3| points_map.get(&p3)).map(|p| p.position);
@@ -189,93 +193,70 @@ impl MMesh {
         ));
         ////////////////////////////////////////////////////////////////////////////////
 
-        // let segments_from_start = segments_data.iter().fold(HashMap::new(), |mut acc, data| {
-        //     acc.insert(data.p1, *data);
-        //     acc
-        // });
-        // let segments_from_end = segments_data.iter().fold(HashMap::new(), |mut acc, data| {
-        //     acc.insert(data.p4, *data);
-        //     acc
-        // });
         result
     }
 
-    pub fn calculate_regions(&self) -> (Vec<Vec<SegmentData>>, HashMap<PointId, PointData>) {
+    pub fn calculate_regions(
+        &self,
+    ) -> (
+        Vec<Vec<(SegmentData, Direction)>>,
+        HashMap<PointId, PointData>,
+    ) {
         let points_map = self.points_map();
-        let segment_data = self.segments.data();
+        let segments_data = self.segments.data();
 
         let mut visited_start_to_end: HashSet<SegmentId> = HashSet::new();
         let mut visited_end_to_start: HashSet<SegmentId> = HashSet::new();
 
         let mut regions = Vec::new();
 
-        for curr_seg in &segment_data {
-            if !visited_start_to_end.contains(&curr_seg.id) {
+        for segment in &segments_data {
+            if !visited_start_to_end.contains(&segment.id) {
                 let mut region = Vec::new();
-                let mut next_curr_seg = *curr_seg;
-                next_curr_seg.direction = Some(Direction::StartToEnd);
+
+                let mut prev_seg = *segment;
+                let mut prev_seg_direction = Direction::StartToEnd;
+
                 'a: loop {
                     let mut closest_next_seg = None;
 
-                    // Iterate thourgh all the segment which are connect to next_curr_seg and find the segment which has closest angle between in anticlock direction.
-                    for next_seg in &segment_data {
-                        let connected = match next_curr_seg.direction.unwrap() {
+                    // Iterate thourgh all the segment which are connect to prev_seg and find the segment which has closest angle between in anticlock direction.
+                    for next_seg in &segments_data {
+                        let connected = match prev_seg_direction {
                             Direction::StartToEnd => {
-                                next_curr_seg.p4 == next_seg.p1 || next_curr_seg.p4 == next_seg.p4
+                                prev_seg.p4 == next_seg.p1 || prev_seg.p4 == next_seg.p4
                             }
                             Direction::EndToStart => {
-                                next_curr_seg.p1 == next_seg.p1 || next_curr_seg.p1 == next_seg.p4
+                                prev_seg.p1 == next_seg.p1 || prev_seg.p1 == next_seg.p4
                             }
                         };
 
-                        let same_segment = next_curr_seg.id == next_seg.id;
+                        let same_segment = prev_seg.id == next_seg.id;
                         if same_segment || !connected {
                             continue;
                         }
+
+                        let prev_pseg =
+                            segment_data_to_pathseg(&points_map, prev_seg, prev_seg_direction);
+
                         let mut next_seg = next_seg.clone();
-                        let curr_pseg = match next_curr_seg.direction.unwrap() {
-                            Direction::StartToEnd => points_id_to_segment(
-                                &points_map,
-                                next_curr_seg.p1,
-                                next_curr_seg.p2,
-                                next_curr_seg.p3,
-                                next_curr_seg.p4,
-                            ),
-                            Direction::EndToStart => points_id_to_segment(
-                                &points_map,
-                                next_curr_seg.p4,
-                                next_curr_seg.p3,
-                                next_curr_seg.p2,
-                                next_curr_seg.p1,
-                            ),
-                        };
+                        let mut next_seg_direction;
+
                         let next_pseg = if next_seg.p1
-                            == match next_curr_seg.direction.unwrap() {
-                                Direction::StartToEnd => next_curr_seg.p4,
-                                Direction::EndToStart => next_curr_seg.p1,
+                            == match prev_seg_direction {
+                                Direction::StartToEnd => prev_seg.p4,
+                                Direction::EndToStart => prev_seg.p1,
                             } {
                             // Measure the angle between endpoints in anticlockwise direction.
-                            next_seg.direction = Some(Direction::StartToEnd);
-                            points_id_to_segment(
-                                &points_map,
-                                next_seg.p1,
-                                next_seg.p2,
-                                next_seg.p3,
-                                next_seg.p4,
-                            )
+                            next_seg_direction = Direction::StartToEnd;
+                            segment_data_to_pathseg(&points_map, next_seg, next_seg_direction)
                         } else {
-                            next_seg.direction = Some(Direction::EndToStart);
-                            points_id_to_segment(
-                                &points_map,
-                                next_seg.p4,
-                                next_seg.p3,
-                                next_seg.p2,
-                                next_seg.p1,
-                            )
+                            next_seg_direction = Direction::EndToStart;
+                            segment_data_to_pathseg(&points_map, next_seg, next_seg_direction)
                         };
 
-                        let curr_start = curr_pseg.eval(1.);
-                        let curr_end = curr_pseg.eval(0.99);
+                        let curr_start = prev_pseg.eval(1.);
+                        let curr_end = prev_pseg.eval(0.99);
                         let curr_dir = point_to_gvec2(curr_end) - point_to_gvec2(curr_start);
 
                         let next_start = next_pseg.eval(0.);
@@ -290,37 +271,38 @@ impl MMesh {
                         };
 
                         closest_next_seg = closest_next_seg
-                            .and_then(|(prev_seg, prev_angle)| {
-                                if angle < prev_angle {
-                                    Some((next_seg, angle))
+                            .and_then(|(closest_seg, closest_angle, closest_direction)| {
+                                if angle < closest_angle {
+                                    Some((next_seg, angle, next_seg_direction))
                                 } else {
-                                    Some((prev_seg, prev_angle))
+                                    Some((closest_seg, closest_angle, closest_direction))
                                 }
                             })
-                            .or(Some((next_seg, angle)));
+                            .or(Some((next_seg, angle, next_seg_direction)));
                     }
 
                     println!(
                         "closest_next_seg {:?}, curr seg {:?}",
-                        closest_next_seg, curr_seg.id
+                        closest_next_seg, segment.id
                     );
 
                     match closest_next_seg {
-                        Some((next_seg, _angle)) => {
-                            match next_seg.direction.unwrap() {
+                        Some((next_seg, _angle, next_seg_direction)) => {
+                            match next_seg_direction {
                                 Direction::StartToEnd => visited_start_to_end.insert(next_seg.id),
                                 Direction::EndToStart => visited_end_to_start.insert(next_seg.id),
                             };
 
-                            region.push(next_seg);
+                            region.push((next_seg, next_seg_direction));
 
-                            if next_seg.id == curr_seg.id {
+                            if next_seg.id == segment.id {
                                 regions.push(region);
 
                                 // Reached to the beginning of the region hence we close the region and break loop
                                 break 'a;
                             } else {
-                                next_curr_seg = next_seg;
+                                prev_seg = next_seg;
+                                prev_seg_direction = next_seg_direction;
                             }
                         }
                         None => {
@@ -330,71 +312,51 @@ impl MMesh {
                     }
                 }
             }
-            if !visited_end_to_start.contains(&curr_seg.id) {
-                let mut next_curr_seg = *curr_seg;
-                next_curr_seg.direction = Some(Direction::EndToStart);
+            if !visited_end_to_start.contains(&segment.id) {
+                let mut prev_seg = *segment;
+                let mut prev_seg_direction = Direction::EndToStart;
+
                 let mut region = Vec::new();
+
                 'a: loop {
                     let mut closest_next_seg = None;
+
                     // Iterate thourgh all the segment which are connect to next_curr_seg and find the segment which has closest angle between in anticlock direction.
-                    for next_seg in &segment_data {
-                        let connected = match next_curr_seg.direction.unwrap() {
+                    for next_seg in &segments_data {
+                        let connected = match prev_seg_direction {
                             Direction::StartToEnd => {
-                                next_curr_seg.p4 == next_seg.p1 || next_curr_seg.p4 == next_seg.p4
+                                prev_seg.p4 == next_seg.p1 || prev_seg.p4 == next_seg.p4
                             }
                             Direction::EndToStart => {
-                                next_curr_seg.p1 == next_seg.p1 || next_curr_seg.p1 == next_seg.p4
+                                prev_seg.p1 == next_seg.p1 || prev_seg.p1 == next_seg.p4
                             }
                         };
-                        let same_segment = next_curr_seg.id == next_seg.id;
+                        let same_segment = prev_seg.id == next_seg.id;
                         if same_segment || !connected {
                             continue;
                         }
-                        let mut next_seg = next_seg.clone();
-                        let curr_pseg = match next_curr_seg.direction.unwrap() {
-                            Direction::StartToEnd => points_id_to_segment(
-                                &points_map,
-                                next_curr_seg.p1,
-                                next_curr_seg.p2,
-                                next_curr_seg.p3,
-                                next_curr_seg.p4,
-                            ),
-                            Direction::EndToStart => points_id_to_segment(
-                                &points_map,
-                                next_curr_seg.p4,
-                                next_curr_seg.p3,
-                                next_curr_seg.p2,
-                                next_curr_seg.p1,
-                            ),
-                        };
+                        let prev_pseg =
+                            segment_data_to_pathseg(&points_map, prev_seg, prev_seg_direction);
+
+                        let next_seg = next_seg.clone();
+                        let next_seg_direction;
+
                         let next_pseg = if next_seg.p1
-                            == match next_curr_seg.direction.unwrap() {
-                                Direction::StartToEnd => next_curr_seg.p4,
-                                Direction::EndToStart => next_curr_seg.p1,
+                            == match prev_seg_direction {
+                                Direction::StartToEnd => prev_seg.p4,
+                                Direction::EndToStart => prev_seg.p1,
                             } {
                             // Measure the angle between endpoints in anticlockwise direction.
-                            next_seg.direction = Some(Direction::StartToEnd);
-                            points_id_to_segment(
-                                &points_map,
-                                next_seg.p1,
-                                next_seg.p2,
-                                next_seg.p3,
-                                next_seg.p4,
-                            )
+                            next_seg_direction = Direction::StartToEnd;
+                            segment_data_to_pathseg(&points_map, next_seg, next_seg_direction)
                         } else {
-                            next_seg.direction = Some(Direction::EndToStart);
-                            points_id_to_segment(
-                                &points_map,
-                                next_seg.p4,
-                                next_seg.p3,
-                                next_seg.p2,
-                                next_seg.p1,
-                            )
+                            next_seg_direction = Direction::EndToStart;
+                            segment_data_to_pathseg(&points_map, next_seg, next_seg_direction)
                         };
 
                         // TODO: Find a better way to do this
-                        let curr_start = curr_pseg.eval(1.);
-                        let curr_end = curr_pseg.eval(0.99);
+                        let curr_start = prev_pseg.eval(1.);
+                        let curr_end = prev_pseg.eval(0.99);
                         let curr_dir = point_to_gvec2(curr_end) - point_to_gvec2(curr_start);
 
                         let next_start = next_pseg.eval(0.);
@@ -409,32 +371,33 @@ impl MMesh {
                         };
 
                         closest_next_seg = closest_next_seg
-                            .and_then(|(prev_seg, prev_angle)| {
-                                if angle < prev_angle {
-                                    Some((next_seg, angle))
+                            .and_then(|(closest_seg, closest_angle, closest_direction)| {
+                                if angle < closest_angle {
+                                    Some((next_seg, angle, next_seg_direction))
                                 } else {
-                                    Some((prev_seg, prev_angle))
+                                    Some((closest_seg, closest_angle, closest_direction))
                                 }
                             })
-                            .or(Some((next_seg, angle)));
+                            .or(Some((next_seg, angle, next_seg_direction)));
                     }
 
                     match closest_next_seg {
-                        Some((next_seg, _angle)) => {
-                            match next_seg.direction.unwrap() {
+                        Some((next_seg, _angle, next_seg_direction)) => {
+                            match next_seg_direction {
                                 Direction::StartToEnd => visited_start_to_end.insert(next_seg.id),
                                 Direction::EndToStart => visited_end_to_start.insert(next_seg.id),
                             };
 
                             println!("Pushed a next_seg ID: {:?}", next_seg.id);
-                            region.push(next_seg);
+                            region.push((next_seg, next_seg_direction));
 
-                            if next_seg.id == curr_seg.id {
+                            if next_seg.id == segment.id {
                                 regions.push(region);
                                 // Reached to the beginning of the region hence we close the region and break loop
                                 break 'a;
                             } else {
-                                next_curr_seg = next_seg;
+                                prev_seg = next_seg;
+                                prev_seg_direction = next_seg_direction
                             }
                         }
                         None => {

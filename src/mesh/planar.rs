@@ -5,7 +5,7 @@ use std::{
 
 use kurbo::{BezPath, ParamCurve, PathSeg, Point, Shape};
 use macroquad::{
-    color::{BLUE, BROWN, GREEN, YELLOW},
+    color::{BLANK, BLUE, BROWN, Color, GREEN, RED, YELLOW},
     shapes::draw_rectangle,
 };
 
@@ -21,6 +21,31 @@ use super::{PointData, PointId, SegmentData, SegmentId};
 pub enum Direction {
     StartToEnd,
     EndToStart,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum XColor {
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Brown,
+    Gray,
+    Blank,
+}
+
+impl XColor {
+    fn to_color(&self) -> Color {
+        match self {
+            XColor::Red => RED,
+            XColor::Green => GREEN,
+            XColor::Yellow => YELLOW,
+            XColor::Blue => BLUE,
+            XColor::Brown => BROWN,
+            XColor::Gray => GREEN,
+            XColor::Blank => BLANK,
+        }
+    }
 }
 
 pub fn draw_region(
@@ -95,11 +120,12 @@ fn cleanup_intersections(intersections: &[f64]) -> Vec<f64> {
 }
 
 impl MMesh {
-    pub fn planar_graph(&self) -> MMesh {
+    pub fn planar_graph(&self) -> (MMesh, HashMap<SegmentId, SegmentId>) {
         let points_map = self.points_map();
         let segments_data = self.segments.data();
 
         let mut result = MMesh::empty();
+        let mut parents: HashMap<SegmentId, SegmentId> = HashMap::new();
 
         for i in 0..segments_data.len() {
             let iseg_data = segments_data[i];
@@ -129,7 +155,10 @@ impl MMesh {
                 };
                 let p4 = result.append_point(sub_seg.end());
 
-                result.append_segment(p1.1, p2, p3, p4);
+                // Append the segment and its parent segment in the original mesh
+                let id = result.append_segment(p1.1, p2, p3, p4).unwrap();
+                parents.insert(id, iseg_data.id);
+
                 p1 = (t, p4);
             }
         }
@@ -193,7 +222,7 @@ impl MMesh {
         ));
         ////////////////////////////////////////////////////////////////////////////////
 
-        result
+        (result, parents)
     }
 
     pub fn calculate_regions(
@@ -239,8 +268,8 @@ impl MMesh {
                         let prev_pseg =
                             segment_data_to_pathseg(&points_map, prev_seg, prev_seg_direction);
 
-                        let mut next_seg = next_seg.clone();
-                        let mut next_seg_direction;
+                        let next_seg = next_seg.clone();
+                        let next_seg_direction;
 
                         let next_pseg = if next_seg.p1
                             == match prev_seg_direction {
@@ -411,4 +440,79 @@ impl MMesh {
 
         (regions, points_map)
     }
+}
+
+pub fn calculate_and_draw_style(
+    regions: &Vec<Vec<(SegmentData, Direction)>>,
+    parents: HashMap<SegmentId, SegmentId>,
+    points: &HashMap<PointId, PointData>,
+    styles: HashMap<SegmentId, [Vec<XColor>; 2]>,
+    setcolor: Option<(Point, XColor)>,
+) -> HashMap<SegmentId, [Vec<XColor>; 2]> {
+    let mut new_styles = HashMap::new();
+
+    for (_, region) in regions.iter().enumerate() {
+        let mut bez = BezPath::from_path_segments(
+            region
+                .iter()
+                .map(|(data, direction)| segment_data_to_pathseg(&points, *data, *direction)),
+        );
+        bez.close_path();
+
+        let mut colors = Vec::new();
+        for (segdata, direction) in region.iter() {
+            let parent = parents.get(&segdata.id).unwrap();
+            if let Some(style) = styles.get(parent) {
+                match direction {
+                    Direction::StartToEnd => colors.append(&mut style[0].clone()),
+                    Direction::EndToStart => colors.append(&mut style[1].clone()),
+                }
+            }
+        }
+
+        // find the maximum appearing color
+        let color = colors
+            .iter()
+            .fold(HashMap::new(), |mut acc, color| {
+                acc.entry(color).and_modify(|f| *f += 1).or_insert(1);
+                acc
+            })
+            .iter()
+            .reduce(|a, b| if a.1 > b.1 { a } else { b })
+            .map(|(color, _f)| **color);
+
+        let mut color = color.unwrap_or(XColor::Blank);
+
+        // set color
+        if let Some((setpoint, setcolor)) = setcolor {
+            if bez.contains(setpoint) {
+                color = setcolor;
+            }
+        }
+        // Re assign the styles
+        for (segdata, direction) in region.iter() {
+            let parent = parents.get(&segdata.id).unwrap();
+            let style = new_styles
+                .entry(*parent)
+                .or_insert([Vec::new(), Vec::new()]);
+            match direction {
+                Direction::StartToEnd => style[0].push(color),
+                Direction::EndToStart => style[1].push(color),
+            }
+        }
+
+        let bbox = bez.bounding_box();
+
+        for x in (0..bbox.width() as usize).step_by(10) {
+            for y in (0..bbox.height() as usize).step_by(10) {
+                let x = x as f64 + bbox.x0;
+                let y = y as f64 + bbox.y0;
+                let point = Point::new(x as f64, y as f64);
+                if bez.contains(point) {
+                    draw_rectangle(x as f32, y as f32, 3., 3., color.to_color());
+                }
+            }
+        }
+    }
+    new_styles
 }

@@ -1,10 +1,16 @@
+use std::collections::HashMap;
+
 use kurbo::{BezPath, Point};
 use macroquad::prelude::*;
 use mesh::{
     HEIGHT, WIDTH,
-    mesh::{MMesh, planar::draw_region},
+    mesh::{
+        MMesh,
+        planar::{XColor, calculate_and_draw_style, draw_region},
+    },
     path::Path,
     pen::Pen,
+    util::mouse_position_point,
 };
 
 fn conf() -> Conf {
@@ -34,6 +40,7 @@ async fn main() {
     // let mut edit_mesh = true;
 
     let result = mesh.to_bezpath();
+    let mut styles = HashMap::new();
 
     println!("bezpath => {:#?}", bezpath);
     println!("result => {:#?}", result);
@@ -54,13 +61,26 @@ async fn main() {
             path.update(&mut mesh);
             path.draw(&mesh);
         }
+        let mut setcolor = None;
+        if is_key_pressed(KeyCode::R) {
+            setcolor = Some((mouse_position_point(), XColor::Red));
+        } else if is_key_pressed(KeyCode::G) {
+            setcolor = Some((mouse_position_point(), XColor::Gray));
+        } else if is_key_pressed(KeyCode::B) {
+            setcolor = Some((mouse_position_point(), XColor::Blue));
+        } else if is_key_pressed(KeyCode::Y) {
+            setcolor = Some((mouse_position_point(), XColor::Yellow));
+        } else if is_key_pressed(KeyCode::B) {
+            setcolor = Some((mouse_position_point(), XColor::Blank));
+        }
         if is_key_down(KeyCode::D) {
             println!("Planar Graph");
-            let (regions, points) = mesh.planar_graph().calculate_regions();
-            draw_region(&regions, &points);
+            let (new_mesh, parents) = mesh.planar_graph();
+            let (regions, points) = new_mesh.calculate_regions();
+            styles = calculate_and_draw_style(&regions, parents, &points, styles, setcolor);
         }
         if is_key_pressed(KeyCode::P) {
-            mesh = mesh.planar_graph();
+            mesh = mesh.planar_graph().0;
         }
         if is_key_pressed(KeyCode::Space) {
             is_pen_active = !is_pen_active;

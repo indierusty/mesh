@@ -17,7 +17,7 @@ use crate::{
 
 use super::{PointData, PointId, SegmentData, SegmentId};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {
     StartToEnd,
     EndToStart,
@@ -442,14 +442,43 @@ impl MMesh {
     }
 }
 
+pub struct RegionStyle {
+    parent_and_direction: Vec<(SegmentId, Direction)>,
+    color: XColor,
+}
+
+impl RegionStyle {
+    fn new(parent_and_direction: Vec<(SegmentId, Direction)>, color: XColor) -> Self {
+        Self {
+            parent_and_direction,
+            color,
+        }
+    }
+
+    pub fn match_style(&self, parent_and_direction: &Vec<(SegmentId, Direction)>) -> usize {
+        let mut matches = 0;
+
+        for (parent, directon) in parent_and_direction {
+            for (sparent, sdirection) in &self.parent_and_direction {
+                if *parent == *sparent && *directon == *sdirection {
+                    matches += 1;
+                    break;
+                }
+            }
+        }
+
+        matches
+    }
+}
+
 pub fn calculate_and_draw_style(
     regions: &Vec<Vec<(SegmentData, Direction)>>,
     parents: HashMap<SegmentId, SegmentId>,
     points: &HashMap<PointId, PointData>,
-    styles: HashMap<SegmentId, [Vec<XColor>; 2]>,
+    styles: Vec<RegionStyle>,
     setcolor: Option<(Point, XColor)>,
-) -> HashMap<SegmentId, [Vec<XColor>; 2]> {
-    let mut new_styles = HashMap::new();
+) -> Vec<RegionStyle> {
+    let mut new_styles = Vec::new();
 
     for (_, region) in regions.iter().enumerate() {
         let mut bez = BezPath::from_path_segments(
@@ -459,29 +488,17 @@ pub fn calculate_and_draw_style(
         );
         bez.close_path();
 
-        let mut colors = Vec::new();
-        for (segdata, direction) in region.iter() {
-            let parent = parents.get(&segdata.id).unwrap();
-            if let Some(style) = styles.get(parent) {
-                match direction {
-                    Direction::StartToEnd => colors.append(&mut style[0].clone()),
-                    Direction::EndToStart => colors.append(&mut style[1].clone()),
-                }
-            }
-        }
-
-        // find the maximum appearing color
-        let color = colors
+        let parent_and_direction = region
             .iter()
-            .fold(HashMap::new(), |mut acc, color| {
-                acc.entry(color).and_modify(|f| *f += 1).or_insert(1);
-                acc
-            })
-            .iter()
-            .reduce(|a, b| if a.1 > b.1 { a } else { b })
-            .map(|(color, _f)| **color);
+            .map(|(seg, dir)| (*parents.get(&seg.id).unwrap(), *dir))
+            .collect::<Vec<(SegmentId, Direction)>>();
 
-        let mut color = color.unwrap_or(XColor::Blank);
+        let style = styles.iter().max_by(|&a, &b| {
+            a.match_style(&parent_and_direction)
+                .cmp(&b.match_style(&parent_and_direction))
+        });
+
+        let mut color = style.map(|s| s.color).unwrap_or(XColor::Blank);
 
         // set color
         if let Some((setpoint, setcolor)) = setcolor {
@@ -489,17 +506,8 @@ pub fn calculate_and_draw_style(
                 color = setcolor;
             }
         }
-        // Re assign the styles
-        for (segdata, direction) in region.iter() {
-            let parent = parents.get(&segdata.id).unwrap();
-            let style = new_styles
-                .entry(*parent)
-                .or_insert([Vec::new(), Vec::new()]);
-            match direction {
-                Direction::StartToEnd => style[0].push(color),
-                Direction::EndToStart => style[1].push(color),
-            }
-        }
+        // Reassign the styles
+        new_styles.push(RegionStyle::new(parent_and_direction, color));
 
         let bbox = bez.bounding_box();
 
@@ -514,5 +522,6 @@ pub fn calculate_and_draw_style(
             }
         }
     }
+
     new_styles
 }

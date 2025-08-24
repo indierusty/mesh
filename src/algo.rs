@@ -1,4 +1,6 @@
-use kurbo::{DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
+use std::ops::Sub;
+
+use kurbo::{DEFAULT_ACCURACY, Line, ParamCurve, PathSeg, Shape};
 
 fn intersections(
     seg1: PathSeg,
@@ -16,27 +18,7 @@ fn intersections(
         let mid1 = (min1 + max1) / 2.;
         let mid2 = (min2 + max2) / 2.;
 
-        if bbox1.width() < DEFAULT_ACCURACY && bbox1.height() < DEFAULT_ACCURACY {
-            // Skip the intersection at the endpoints which are connected or are at the same position.
-            if (seg1.start().distance(seg2.start()) < 1. && mid1 < 0.01 && mid2 < 0.01)
-                || (seg1.start().distance(seg2.end()) < 1. && mid1 < 0.01 && mid2 > 0.99)
-                || (seg1.end().distance(seg2.start()) < 1. && mid1 > 0.99 && mid2 < 0.01)
-                || (seg1.end().distance(seg2.end()) < 1. && mid1 > 0.99 && mid2 > 0.99)
-            {
-                return;
-            }
-            // let close_endpoints = seg1.start().distance(seg2.end()) < 0.05
-            //     || seg1.start().distance(seg2.start()) < 0.05
-            //     || seg1.end().distance(seg2.end()) < 0.05
-            //     || seg1.end().distance(seg2.start()) < 0.05;
-
-            // let intersect_at_endpoints = mid1 < 0.05 || mid1 > 0.95 || mid2 < 0.05 || mid2 > 0.95;
-
-            // TODO: find a better solution to this.
-            // if intersection is near the endpoints or either segments and their endpoints are closer then we skip the intersection.
-            // if !(close_endpoints && intersect_at_endpoints) {
-            //     result.puhs(min1);
-            // }
+        if bbox1.width().abs() < DEFAULT_ACCURACY && bbox1.height().abs() < DEFAULT_ACCURACY {
             result.push(min1);
             return;
         }
@@ -48,8 +30,21 @@ fn intersections(
 }
 
 // TODO: Cleanup and find a better way to do this
-pub fn path_intersections(seg1: PathSeg, seg2: PathSeg) -> Vec<f64> {
+pub fn pathseg_intersections(seg1: PathSeg, seg2: PathSeg) -> Vec<f64> {
     let mut result = Vec::new();
     intersections(seg1, 0., 1., seg2, 0., 1., &mut result);
     result
+}
+
+pub fn cleanup_intersections(intersections: Vec<f64>) -> Vec<f64> {
+    intersections.iter().fold(Vec::new(), |mut acc, &t| {
+        if let Some(&last_t) = acc.last() {
+            if last_t.sub(t).abs() > 0.01 {
+                acc.push(t);
+            }
+        } else {
+            acc.push(t);
+        }
+        acc
+    })
 }

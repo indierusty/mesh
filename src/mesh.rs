@@ -1,5 +1,3 @@
-pub mod planar;
-
 use std::collections::{HashMap, HashSet};
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
@@ -34,9 +32,9 @@ impl PointIndex {
 
 #[derive(Debug, Clone, Copy)]
 pub struct PointData {
-    idx: PointIndex,
-    id: PointId,
-    position: Point,
+    pub idx: PointIndex,
+    pub id: PointId,
+    pub position: Point,
 }
 
 impl PointData {
@@ -47,8 +45,8 @@ impl PointData {
 
 #[derive(Clone, Debug)]
 pub struct PointTable {
-    id: Vec<PointId>,
-    position: Vec<Point>,
+    pub id: Vec<PointId>,
+    pub position: Vec<Point>,
 }
 
 impl PointTable {
@@ -119,12 +117,12 @@ impl SegmentIndex {
 
 #[derive(Clone, Debug, Copy)]
 pub struct SegmentData {
-    idx: SegmentIndex,
-    id: SegmentId,
-    p1: PointId,
-    p2: Option<PointId>,
-    p3: Option<PointId>,
-    p4: PointId,
+    pub idx: SegmentIndex,
+    pub id: SegmentId,
+    pub p1: PointId,
+    pub p2: Option<PointId>,
+    pub p3: Option<PointId>,
+    pub p4: PointId,
 }
 
 impl SegmentData {
@@ -162,11 +160,11 @@ impl SegmentData {
 
 #[derive(Clone, Debug)]
 pub struct SegmentTable {
-    id: Vec<SegmentId>,
-    p1: Vec<PointId>,
-    p2: Vec<Option<PointId>>,
-    p3: Vec<Option<PointId>>,
-    p4: Vec<PointId>,
+    pub id: Vec<SegmentId>,
+    pub p1: Vec<PointId>,
+    pub p2: Vec<Option<PointId>>,
+    pub p3: Vec<Option<PointId>>,
+    pub p4: Vec<PointId>,
 }
 
 impl SegmentTable {
@@ -247,7 +245,7 @@ impl MMesh {
         SegmentId(self.next_id.next())
     }
 
-    pub fn points_map(&self) -> HashMap<PointId, PointData> {
+    pub fn points_data(&self) -> HashMap<PointId, PointData> {
         self.points
             .data()
             .iter()
@@ -257,7 +255,7 @@ impl MMesh {
             })
     }
 
-    pub fn segments_map(&self) -> HashMap<SegmentId, SegmentData> {
+    pub fn segments_data(&self) -> HashMap<SegmentId, SegmentData> {
         self.segments
             .data()
             .iter()

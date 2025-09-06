@@ -3,13 +3,14 @@ use std::collections::{HashMap, HashSet};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 use macroquad::prelude::*;
 
-use crate::next_id::NextId;
+use crate::{dynamic::DynamicData, next_id::NextId};
 
 #[derive(Debug, Clone)]
-pub struct MMesh {
+pub struct DynamicMesh {
     points: PointTable,
     segments: SegmentTable,
     next_id: NextId,
+    pub dynamic_data: DynamicData,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -228,12 +229,13 @@ impl SegmentTable {
     }
 }
 
-impl MMesh {
+impl DynamicMesh {
     pub fn empty() -> Self {
         Self {
             points: PointTable::new(),
             segments: SegmentTable::new(),
             next_id: NextId::new(),
+            dynamic_data: DynamicData::new(),
         }
     }
 
@@ -637,7 +639,7 @@ mod tests {
         bezpath.quad_to(Point::new(100., 120.), Point::new(100., 200.));
         bezpath.quad_to(Point::new(200., 220.), Point::new(200., 300.));
 
-        let mut mesh = MMesh::empty();
+        let mut mesh = DynamicMesh::empty();
         mesh.append_bezpath(&bezpath);
 
         let result = mesh.to_bezpath();

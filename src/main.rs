@@ -1,10 +1,8 @@
 use macroquad::color::*;
 use macroquad::prelude::*;
-use mesh::dynamic::DynamicRegions;
-use mesh::{
-    HEIGHT, WIDTH, dynamic::intersection, mesh::MMesh, path::Path, pen::Pen,
-    util::mouse_position_point,
-};
+use mesh::dynamic::DynamicData;
+use mesh::tools::Tools;
+use mesh::{HEIGHT, WIDTH, dynamic::intersection, mesh::DynamicMesh, util::mouse_position_point};
 
 fn conf() -> Conf {
     Conf {
@@ -17,81 +15,44 @@ fn conf() -> Conf {
 
 #[macroquad::main(conf)]
 async fn main() {
-    let mut mesh = MMesh::empty();
+    let mut mesh = DynamicMesh::empty();
     // mesh.append_bezpath(&bezpath);
+    // let result = mesh.to_bezpath();
 
-    let mut pen = Pen::new();
-    let mut path = Path::new();
+    let mut tools = Tools::new();
 
-    let mut is_pen_active = true;
-    // let mut edit_mesh = true;
-
-    let result = mesh.to_bezpath();
-    let mut dynamic = DynamicRegions::new();
-    let mut prev_intersection_data = None;
-
+    let mut clock = 0.;
     loop {
-        clear_background(WHITE);
-        // if edit_mesh {
-        //     mesh.draw();
-        // } else {
-        //     pmesh.draw();
-        // }
-        mesh.draw();
+        tools.update(&mut mesh);
 
-        if is_pen_active {
-            pen.update(&mut mesh);
-            pen.draw(&mesh);
-        } else {
-            path.update(&mut mesh);
-            path.draw(&mesh);
-        }
-        let mut setcolor = None;
-        if is_key_pressed(KeyCode::R) {
-            setcolor = Some((mouse_position_point(), RED));
-        } else if is_key_pressed(KeyCode::G) {
-            setcolor = Some((mouse_position_point(), GRAY));
-        } else if is_key_pressed(KeyCode::B) {
-            setcolor = Some((mouse_position_point(), BLUE));
-        } else if is_key_pressed(KeyCode::Y) {
-            setcolor = Some((mouse_position_point(), YELLOW));
-        } else if is_key_pressed(KeyCode::C) {
-            setcolor = Some((mouse_position_point(), BLACK));
-        }
-        if is_key_down(KeyCode::D) {
-            println!("Planar Graph");
-            // let (new_mesh, parents) = mesh.planar_graph();
-            // let (regions, points) = new_mesh.calculate_regions();
-            // styles = calculate_and_draw_style(&regions, parents, &points, styles, setcolor);
+        if clock > 1. / 10. {
+            clock = 0.;
+            println!(
+                "------------------------------------------------------------------------------\n"
+            );
+
             let intersection = intersection(&mesh);
-            prev_intersection_data = Some(intersection.clone());
-            intersection.draw();
-            let mut regions = DynamicRegions::build(intersection)
-                .style(dynamic.clone())
-                .filter_outer_regions();
-            if let Some((position, color)) = setcolor {
-                regions.apply_style(Some(color), position);
-            }
-            regions.render();
-            dynamic = regions.clone();
-        }
-        if is_key_pressed(KeyCode::P) {
-            // mesh = mesh.planar_graph().0;
-        }
-        if is_key_pressed(KeyCode::Space) {
-            is_pen_active = !is_pen_active;
-            pen = Pen::new();
-            path = Path::new();
-        }
-        // let (x, y) = mouse_position();
-        // draw_text(&format!("({:.2}, {:.2})", x, y), x, y, 20., BLACK);
+            // intersection.draw();
+            let dynamic_data = DynamicData::build(intersection)
+                .filter_outer_regions()
+                .dynamic(mesh.dynamic_data.clone());
 
-        // if let Some(data) = &prev_intersection_data {
-        //     for i in 0..data.segments.len() {
-        //         let mid = data.segments[i].eval(0.5);
-        //         draw_text(&format!("{}", i), mid.x as f32, mid.y as f32, 18., BLACK);
-        //     }
-        // }
+            println!("Dynamic Data \n{:#?}", dynamic_data);
+
+            mesh.dynamic_data = dynamic_data.clone();
+
+            println!(
+                "------------------------------------------------------------------------------\n"
+            );
+        }
+        clock += get_frame_time();
+
+        clear_background(WHITE);
+
+        mesh.draw();
+        mesh.dynamic_data.render();
+        tools.draw(&mesh);
+
         next_frame().await
     }
 }

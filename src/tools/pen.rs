@@ -2,7 +2,7 @@ use kurbo::{CubicBez, Line, Point, QuadBez};
 use macroquad::prelude::*;
 
 use crate::{
-    mesh::{MMesh, PointId},
+    mesh::{DynamicMesh, PointId},
     util::{
         draw_bez, dvec2_to_point, mouse_position_dvec2, mouse_position_point, point_to_dvec2,
         xdraw_circle, xdraw_line,
@@ -18,16 +18,16 @@ enum State {
 }
 
 #[derive(Clone, Debug)]
-pub struct Pen {
+pub struct PenTool {
     state: State,
 }
 
-impl Pen {
-    pub fn new() -> Pen {
-        Pen { state: State::Idle }
+impl PenTool {
+    pub fn new() -> PenTool {
+        PenTool { state: State::Idle }
     }
 
-    pub fn update(&mut self, mesh: &mut MMesh) {
+    pub fn update(&mut self, mesh: &mut DynamicMesh) {
         match &mut self.state {
             State::Idle => {
                 if is_mouse_button_pressed(MouseButton::Left) {
@@ -119,7 +119,7 @@ impl Pen {
         }
     }
 
-    pub fn draw(&self, mesh: &MMesh) {
+    pub fn draw(&self, mesh: &DynamicMesh) {
         match self.state {
             State::Idle => {}
             State::DragStartPoint(p1, p2) => {

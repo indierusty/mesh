@@ -2,8 +2,7 @@ pub mod algo;
 pub mod dynamic;
 pub mod mesh;
 pub mod next_id;
-pub mod path;
-pub mod pen;
+pub mod tools;
 pub mod util;
 
 pub const WIDTH: i32 = 900;

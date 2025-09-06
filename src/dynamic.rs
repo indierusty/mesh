@@ -1,23 +1,21 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     f64::consts::PI,
     fmt::{Display, Write},
 };
 
-use kurbo::{
-    Affine, BezPath, Line, ParamCurve, ParamCurveFit, PathEl, PathSeg, Point, Rect, Shape, Vec2,
-};
+use kurbo::{BezPath, Line, ParamCurve, PathSeg, Point, Rect, Shape};
 use macroquad::{
-    color::{BLACK, BLUE, BROWN, Color, GREEN, ORANGE, PURPLE, RED, YELLOW},
+    color::{BLACK, Color},
     math::DVec2,
-    shapes::{draw_line, draw_rectangle},
+    shapes::draw_line,
 };
 
 use crate::{
     MIN_SEPARATION,
     algo::{cleanup_intersections, pathseg_intersections},
-    mesh::{MMesh, SegmentId},
-    util::{pathseg_tangent, segment_data_to_pathseg, xdraw_circle, xdraw_line, xdraw_segment},
+    mesh::{DynamicMesh, SegmentId},
+    util::{segment_data_to_pathseg, xdraw_circle},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -68,7 +66,7 @@ impl IntersectData {
     }
 }
 
-pub fn intersection(mesh: &MMesh) -> IntersectData {
+pub fn intersection(mesh: &DynamicMesh) -> IntersectData {
     let segments_data = mesh.segments_data();
     let points_data = mesh.points_data();
 
@@ -101,7 +99,8 @@ pub fn intersection(mesh: &MMesh) -> IntersectData {
         intersections.push(0.);
         intersections.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let intersections = cleanup_intersections(intersections);
-        println!("{:?}", &intersections);
+
+        // println!("{:?}", &intersections);
 
         // TODO: cleanup intersecitons
 
@@ -170,34 +169,63 @@ impl DynamicRegionStructure {
     }
 
     fn match_structure(&self, other: &DynamicRegionStructure) -> bool {
-        let is_match = self
-            .flow
-            .iter()
-            .zip(self.parent.iter())
-            .all(|(&flow, &parent)| {
-                other
-                    .flow
-                    .iter()
-                    .zip(other.parent.iter())
-                    .any(|(&o_flow, &o_parent)| flow == o_flow && parent == o_parent)
-            });
+        // Find if this cycle is a subset of other cycle
+        let i_flows = self.flow.clone();
+        let i_prnts = self.parent.clone();
 
-        if self.flow.len() == other.flow.len() && is_match {
-            true
-        } else {
-            false
+        let mut j_flows = other.flow.clone();
+        let mut j_prnts = other.parent.clone();
+
+        let mut max_matches = 0;
+
+        for i in 0..i_flows.len() {
+            for j in 0..j_flows.len() {
+                if i_flows[i] == j_flows[j] && i_prnts[i] == j_prnts[j] {
+                    max_matches += 1;
+                    // Remove the flows and parent of i's cyles which is not present in the j's cycle
+                    j_flows.remove(j);
+                    j_prnts.remove(j);
+                    break;
+                }
+            }
         }
+
+        // This cycle can be a subset of other cycle if atleast two of its edge is also edge of the other cycle
+        if self.flow.len() != 3 {
+            if max_matches == self.flow.len() {
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        // NOTE: A cycle can atmost have two edges with same flow and parent.
+        // Check if the order matches
+
+        let j_flows = other.flow.clone();
+        let j_prnts = other.parent.clone();
+
+        let mut i_flows = self.flow.clone();
+        let mut i_prnts = self.parent.clone();
+        for _ in 0..3 {
+            if i_flows == j_flows && i_prnts == j_prnts {
+                return true;
+            }
+            i_flows.rotate_left(1);
+            i_prnts.rotate_left(1);
+        }
+        false
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct DynamicRegions {
+pub struct DynamicData {
     paths: Vec<BezPath>,
     colors: Vec<Option<Color>>,
     structures: Vec<DynamicRegionStructure>,
 }
 
-impl DynamicRegions {
+impl DynamicData {
     pub fn new() -> Self {
         Self {
             paths: Vec::new(),
@@ -213,8 +241,8 @@ impl DynamicRegions {
     }
 
     pub fn render(&self) {
-        println!("paths {:?}", self.paths);
-        println!("paths len {}", self.paths.len());
+        // println!("paths {:?}", self.paths);
+        // println!("RENDER \npaths len {}", self.paths.len());
         for (i, path) in self.paths.clone().iter().enumerate() {
             if path.elements().is_empty() {
                 continue;
@@ -222,7 +250,7 @@ impl DynamicRegions {
             let Some(color) = self.colors[i] else {
                 continue;
             };
-            println!("#");
+            // println!("#");
             let mut bbox = path.bounding_box().abs();
             while bbox.y0 < bbox.y1 {
                 let line = Line::new(Point::new(bbox.x0, bbox.y0), Point::new(bbox.x1, bbox.y0));
@@ -258,9 +286,9 @@ impl DynamicRegions {
         }
     }
 
-    pub fn build(intersect_data: IntersectData) -> DynamicRegions {
-        println!("{}", intersect_data);
-        let mut dynamic_regions = DynamicRegions::new();
+    pub fn build(intersect_data: IntersectData) -> DynamicData {
+        // println!("{}", intersect_data);
+        let mut dynamic_regions = DynamicData::new();
 
         let mut visited_start_to_end = HashSet::<usize>::new();
         let mut visited_end_to_start = HashSet::<usize>::new();
@@ -279,7 +307,7 @@ impl DynamicRegions {
                 if let Some((bezpath, structure, visited_idxs)) =
                     Self::build_region(&intersect_data, next_idx, flow)
                 {
-                    println!("{:#?}", structure);
+                    // println!("{:#?}", structure); // NOTE: DEBUG:
                     // update visited state
                     for i in 0..visited_idxs.len() {
                         let flow = structure.flow[i];
@@ -310,10 +338,10 @@ impl DynamicRegions {
         let mut curr_idx = start;
         let mut curr_flow = flow;
 
-        println!(
-            "====================================================> {}, {:?}",
-            curr_idx, curr_flow
-        );
+        // println!(
+        //     "====================================================> {}, {:?}",
+        //     curr_idx, curr_flow
+        // );
         // let mut i = 0;
         loop {
             let curr_segment = intersect_data.segments[curr_idx];
@@ -341,13 +369,13 @@ impl DynamicRegions {
                 curr_angle
             };
 
-            println!(
-                "{}, |__ {:.3} {:?}, {:?}",
-                curr_idx,
-                curr_angle.to_degrees(),
-                curr_flow,
-                curr_segment.end()
-            );
+            // println!(
+            //     "{}, |__ {:.3} {:?}, {:?}",
+            //     curr_idx,
+            //     curr_angle.to_degrees(),
+            //     curr_flow,
+            //     curr_segment.end()
+            // );
 
             let mut min_angle = 8.;
             let mut best_next = None;
@@ -379,10 +407,10 @@ impl DynamicRegions {
                 };
                 let ctn = curr_tangent.normalize();
                 let ntn = next_tangent.normalize();
-                println!(
-                    "\t\t curr_tangent ({:.3}, {:.3}), next_tangent ({:.3}, {:.3})",
-                    ctn.x, ctn.y, ntn.x, ntn.y
-                );
+                // println!(
+                //     "\t\t curr_tangent ({:.3}, {:.3}), next_tangent ({:.3}, {:.3})",
+                //     ctn.x, ctn.y, ntn.x, ntn.y
+                // );
                 let angle = DVec2::new(curr_tangent.x, curr_tangent.y)
                     .angle_between(DVec2::new(next_tangent.x, next_tangent.y));
                 let angle = if angle.is_sign_negative() {
@@ -390,22 +418,22 @@ impl DynamicRegions {
                 } else {
                     angle
                 };
-                println!(
-                    "\t\tcnext {}, |__ {:.2}, {:?}, {:?}",
-                    next_idx,
-                    angle.to_degrees(),
-                    next_segment.start(),
-                    next_segment.end()
-                );
+                // println!(
+                //     "\t\tcnext {}, |__ {:.2}, {:?}, {:?}",
+                //     next_idx,
+                //     angle.to_degrees(),
+                //     next_segment.start(),
+                //     next_segment.end()
+                // );
                 if angle < min_angle {
                     min_angle = angle;
                     best_next = Some((next_idx, next_flow));
-                    println!(
-                        "\tpnext {}, {:?}, {:?}",
-                        next_idx,
-                        next_flow,
-                        next_segment.start()
-                    );
+                    // println!(
+                    //     "\tpnext {}, {:?}, {:?}",
+                    //     next_idx,
+                    //     next_flow,
+                    //     next_segment.start()
+                    // );
                 }
             }
 
@@ -429,10 +457,10 @@ impl DynamicRegions {
             // i += 1;
         }
 
-        println!(
-            "====================================================> {}, {:?}",
-            curr_idx, curr_flow
-        );
+        // println!(
+        //     "====================================================> {}, {:?}",
+        //     curr_idx, curr_flow
+        // );
 
         if structure.flow.len() > 1 && curr_idx == start && curr_flow == flow {
             Some((path, structure, visited_index))
@@ -456,11 +484,8 @@ impl DynamicRegions {
             .iter()
             .max_by(|a, b| a.area().abs().partial_cmp(&b.area().abs()).unwrap());
 
-        if self.paths.len() < 3 {
-            paths.push(self.paths[0].clone());
-            colors.push(self.colors[0].clone());
-            structures.push(self.structures[0].clone());
-        } else {
+        // There is atleast two closed path in a mesh when one is the outer and other is the inner closed paths/faces/cycles
+        if self.paths.len() > 1 {
             for i in 0..self.paths.len() {
                 let mxbbox = max_bbox.unwrap();
                 if mxbbox.area() > bboxes[i].area() {
@@ -471,14 +496,14 @@ impl DynamicRegions {
             }
         }
 
-        DynamicRegions {
+        DynamicData {
             paths,
             colors,
             structures,
         }
     }
 
-    pub fn style(mut self, prev_dynamic_region: DynamicRegions) -> Self {
+    pub fn dynamic(mut self, prev_dynamic_region: DynamicData) -> Self {
         for i in 0..self.paths.len() {
             let curr_structure = self.structures[i].clone();
             let structure_match = prev_dynamic_region

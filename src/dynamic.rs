@@ -496,13 +496,28 @@ impl DynamicData {
             .max_by(|a, b| a.area().abs().partial_cmp(&b.area().abs()).unwrap());
 
         // There is atleast two closed path in a mesh when one is the outer and other is the inner closed paths/faces/cycles
-        if self.paths.len() > 1 {
-            for i in 0..self.paths.len() {
-                let mxbbox = max_bbox.unwrap();
-                if mxbbox.area() > bboxes[i].area() {
-                    paths.push(self.paths[i].clone());
-                    colors.push(self.colors[i].clone());
-                    structures.push(self.structures[i].clone());
+        match self.paths.len() {
+            1 => {
+                // Must be a sinlge segment as a region will create atleast two path (inner and outer one)
+            }
+            2 => {
+                let first_len = self.paths[0].segments().count();
+                let second_len = self.paths[1].segments().count();
+
+                let inner_path = if first_len < second_len { 0 } else { 1 };
+
+                paths.push(self.paths[inner_path].clone());
+                colors.push(self.colors[inner_path].clone());
+                structures.push(self.structures[inner_path].clone());
+            }
+            _ => {
+                for i in 0..self.paths.len() {
+                    let mxbbox = max_bbox.unwrap();
+                    if mxbbox.area() > bboxes[i].area() {
+                        paths.push(self.paths[i].clone());
+                        colors.push(self.colors[i].clone());
+                        structures.push(self.structures[i].clone());
+                    }
                 }
             }
         }

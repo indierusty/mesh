@@ -269,7 +269,7 @@ impl DynamicData {
             let mut bbox = path.bounding_box().abs();
             while bbox.y0 < bbox.y1 {
                 let line = Line::new(Point::new(bbox.x0, bbox.y0), Point::new(bbox.x1, bbox.y0));
-                let intersections = path.segments().fold(Vec::new(), |mut acc, seg| {
+                let mut intersections = path.segments().fold(Vec::new(), |mut acc, seg| {
                     acc.append(
                         &mut seg
                             .intersect_line(line)
@@ -279,18 +279,14 @@ impl DynamicData {
                     );
                     acc
                 });
-                let min_x = intersections
-                    .iter()
-                    .min_by(|a, b| a.partial_cmp(&b).unwrap());
-                let max_x = intersections
-                    .iter()
-                    .max_by(|a, b| a.partial_cmp(&b).unwrap());
 
-                if let (Some(min_x), Some(max_x)) = (min_x, max_x) {
+                intersections.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+
+                for xs in intersections.chunks_exact(2) {
                     draw_line(
-                        *min_x as f32,
+                        xs[0] as f32,
                         bbox.y0 as f32,
-                        *max_x as f32,
+                        xs[1] as f32,
                         bbox.y0 as f32,
                         2.,
                         color,

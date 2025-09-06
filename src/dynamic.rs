@@ -210,12 +210,8 @@ impl DynamicRegionStructure {
         }
 
         // This cycle can be a subset of other cycle if atleast two of its edge is also edge of the other cycle
-        if self.flow.len() != 3 {
-            if max_matches == self.flow.len() {
-                return true;
-            } else {
-                return false;
-            }
+        if max_matches != self.flow.len() {
+            return false;
         }
 
         // NOTE: A cycle can atmost have two edges with same flow and parent.
@@ -226,7 +222,7 @@ impl DynamicRegionStructure {
 
         let mut i_flows = self.flow.clone();
         let mut i_prnts = self.parent.clone();
-        for _ in 0..3 {
+        for _ in 0..i_flows.len() {
             if i_flows == j_flows && i_prnts == j_prnts {
                 return true;
             }

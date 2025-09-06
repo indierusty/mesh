@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 use macroquad::prelude::*;
 
-use crate::{dynamic::DynamicData, next_id::NextId};
+use crate::{dynamic::DynamicData, next_id::NextId, util::xdraw_circle};
 
 #[derive(Debug, Clone)]
 pub struct DynamicMesh {
@@ -159,6 +159,46 @@ impl SegmentData {
     }
 }
 
+#[derive(Clone, Debug, Copy)]
+pub struct SegmentPoints {
+    pub id: SegmentId,
+    pub p1: Point,
+    pub p2: Option<Point>,
+    pub p3: Option<Point>,
+    pub p4: Point,
+}
+
+impl SegmentPoints {
+    pub fn from_data(points_data: &HashMap<PointId, PointData>, segment_data: SegmentData) -> Self {
+        let (p1, p2, p3, p4) = (
+            segment_data.p1,
+            segment_data.p2,
+            segment_data.p3,
+            segment_data.p4,
+        );
+        let p1 = points_data.get(&p1).unwrap().position;
+        let p2 = p2.and_then(|p2| points_data.get(&p2)).map(|p| p.position);
+        let p3 = p3.and_then(|p3| points_data.get(&p3)).map(|p| p.position);
+        let p4 = points_data.get(&p4).unwrap().position;
+        Self {
+            id: segment_data.id,
+            p1,
+            p2,
+            p3,
+            p4,
+        }
+    }
+
+    pub fn to_pathseg(&self) -> PathSeg {
+        let Self { p1, p2, p3, p4, .. } = *self;
+
+        match (p2, p3) {
+            (None, None) => PathSeg::Line(Line::new(p1, p4)),
+            (Some(p2), None) | (None, Some(p2)) => PathSeg::Quad(QuadBez::new(p1, p2, p4)),
+            (Some(p2), Some(p3)) => PathSeg::Cubic(CubicBez::new(p1, p2, p3, p4)),
+        }
+    }
+}
 #[derive(Clone, Debug)]
 pub struct SegmentTable {
     pub id: Vec<SegmentId>,
@@ -265,6 +305,15 @@ impl DynamicMesh {
                 map.insert(data.id, *data);
                 map
             })
+    }
+
+    pub fn segments_points(&self) -> Vec<(SegmentId, SegmentPoints)> {
+        let points_data = self.points_data();
+        self.segments
+            .data()
+            .iter()
+            .map(|data| (data.id, SegmentPoints::from_data(&points_data, *data)))
+            .collect()
     }
 
     pub fn segment(&self, index: SegmentIndex, points: &HashMap<PointId, PointData>) -> PathSeg {
@@ -613,6 +662,11 @@ impl DynamicMesh {
                 }
                 last_point = Some(next_point);
                 t += 1e-3;
+            }
+
+            match segment {
+                PathSeg::Cubic(cubic_bez) => xdraw_circle(cubic_bez.eval(0.5), 3., GREEN),
+                _ => {}
             }
         }
 

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     f64::consts::PI,
     fmt::{Display, Write},
 };
@@ -24,12 +24,18 @@ pub enum Direction {
     EndToStart,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Part {
+    First,
+    Second,
+}
+
 #[derive(Clone)]
 pub struct IntersectData {
     /// Sub-segments
     pub segments: Vec<PathSeg>,
-    /// Parent segments id for each sub-segment.
-    pub parents: Vec<SegmentId>,
+    /// Parent segments id and part of the cubic segment for each sub-segment.
+    pub parents: Vec<(SegmentId, Option<Part>)>,
 }
 
 impl Display for IntersectData {
@@ -51,7 +57,7 @@ impl IntersectData {
         }
     }
 
-    fn push(&mut self, segment: PathSeg, parent: SegmentId) {
+    fn push(&mut self, segment: PathSeg, parent: (SegmentId, Option<Part>)) {
         self.segments.push(segment);
         self.parents.push(parent);
     }
@@ -67,8 +73,25 @@ impl IntersectData {
 }
 
 pub fn intersection(mesh: &DynamicMesh) -> IntersectData {
-    let segments_data = mesh.segments_data();
-    let points_data = mesh.points_data();
+    let segments_data = mesh
+        .segments_points()
+        .iter()
+        .map(|(seg_id, segment_data)| match segment_data.to_pathseg() {
+            PathSeg::Cubic(cubic_bez) => {
+                let (first, second) = cubic_bez.subdivide();
+                [
+                    Some((*seg_id, Some(Part::First), PathSeg::Cubic(first))),
+                    Some((*seg_id, Some(Part::Second), PathSeg::Cubic(second))),
+                ]
+            }
+            segment => [Some((*seg_id, None, segment)), None],
+        })
+        .flatten()
+        .flatten()
+        .fold(HashMap::new(), |mut acc, (seg_id, part, segment)| {
+            acc.insert((seg_id, part), segment);
+            acc
+        });
 
     // get all the intersection for each segment with every other segment in the mesh.
     let mut segments_intersections = Vec::new();
@@ -79,11 +102,8 @@ pub fn intersection(mesh: &DynamicMesh) -> IntersectData {
             if iseg_id == jseg_id {
                 continue;
             }
-            let iseg_data = segments_data[iseg_id];
-            let jseg_data = segments_data[jseg_id];
-
-            let iseg = segment_data_to_pathseg(&points_data, iseg_data, Direction::StartToEnd);
-            let jseg = segment_data_to_pathseg(&points_data, jseg_data, Direction::StartToEnd);
+            let iseg = segments_data[iseg_id];
+            let jseg = segments_data[jseg_id];
 
             let mut intersection = pathseg_intersections(iseg, jseg);
             intersections.append(&mut intersection);
@@ -107,7 +127,6 @@ pub fn intersection(mesh: &DynamicMesh) -> IntersectData {
         let mut last_t = 0.;
         for &next_t in intersections.iter().skip(1) {
             let segment = segments_data[seg_id];
-            let segment = segment_data_to_pathseg(&points_data, segment, Direction::StartToEnd);
             let subsegment = segment.subsegment(last_t..next_t);
 
             intersection_data.push(subsegment, *seg_id);
@@ -151,7 +170,7 @@ impl Flow {
 
 #[derive(Clone, Debug)]
 pub struct DynamicRegionStructure {
-    parent: Vec<SegmentId>,
+    parent: Vec<(SegmentId, Option<Part>)>,
     flow: Vec<Flow>,
 }
 
@@ -163,7 +182,7 @@ impl DynamicRegionStructure {
         }
     }
 
-    fn push(&mut self, parent: SegmentId, flow: Flow) {
+    fn push(&mut self, parent: (SegmentId, Option<Part>), flow: Flow) {
         self.parent.push(parent);
         self.flow.push(flow);
     }
